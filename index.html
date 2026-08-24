@@ -193,7 +193,8 @@
         { id: 'pt-5', name: 'Kaos Kaki Putih + Hitam', pricePutra: 30000, pricePutri: 30000, applicableGender: 'Semua', period: '1 Kali', notes: '2 pasang kaos kaki', active: true, isDefault: true },
         { id: 'pt-6', name: 'Topi + Dasi', pricePutra: 35000, pricePutri: 35000, applicableGender: 'Semua', period: '1 Kali', notes: 'Perlengkapan upacara', active: true, isDefault: true },
         { id: 'pt-7', name: 'Buku LKS Kelas 1 Semester 1', pricePutra: 78000, pricePutri: 78000, applicableGender: 'Semua', period: 'Semester 1', notes: 'Paket LKS Kurikulum Merdeka', active: true, isDefault: true },
-        { id: 'pt-8', name: 'Iuran Pramuka + Dana Abadi', pricePutra: 13000, pricePutri: 13000, applicableGender: 'Semua', period: '1 Tahun', notes: 'Iuran wajib tahunan', active: true, isDefault: true }
+        { id: 'pt-8', name: 'Iuran Pramuka + Dana Abadi', pricePutra: 13000, pricePutri: 13000, applicableGender: 'Semua', period: '1 Tahun', notes: 'Iuran wajib tahunan', active: true, isDefault: true },
+        { id: 'pt-9', name: 'Buku 7 KIH', pricePutra: 10000, pricePutri: 10000, applicableGender: 'Semua', period: '1 Kali', notes: 'Buku 7 Kebiasaan Anak Indonesia Hebat (7 KIH)', active: true, isDefault: true }
       ];
 
       const DEFAULT_SETTINGS = {
@@ -290,7 +291,27 @@
 
           try {
             const p = localStorage.getItem('app_payment_types');
-            this.paymentTypes = p ? JSON.parse(p) : DEFAULT_PAYMENT_TYPES;
+            if (p) {
+              const parsed = JSON.parse(p);
+              // Ensure Buku 7 KIH is merged
+              const has7KIH = parsed.some(item => item.name.toLowerCase().includes('7 kih') || item.id === 'pt-9');
+              if (!has7KIH) {
+                parsed.push({
+                  id: 'pt-9',
+                  name: 'Buku 7 KIH',
+                  pricePutra: 10000,
+                  pricePutri: 10000,
+                  applicableGender: 'Semua',
+                  period: '1 Kali',
+                  notes: 'Buku 7 Kebiasaan Anak Indonesia Hebat (7 KIH)',
+                  active: true,
+                  isDefault: true
+                });
+              }
+              this.paymentTypes = parsed;
+            } else {
+              this.paymentTypes = DEFAULT_PAYMENT_TYPES;
+            }
           } catch(e) { this.paymentTypes = DEFAULT_PAYMENT_TYPES; }
 
           try {
@@ -669,7 +690,7 @@
                 </div>
                 <h2 class="text-2xl font-bold">Selamat Datang di Administrasi Kelas 1</h2>
                 <p class="text-emerald-100 text-sm mt-1 max-w-xl">
-                  Kelola pencatatan pembayaran seragam, atribut, LKS, dan iuran siswa secara otomatis, akurat, dan profesional.
+                  Kelola pencatatan pembayaran seragam, atribut, LKS, Buku 7 KIH, dan iuran siswa secara otomatis, akurat, dan profesional.
                 </p>
               </div>
               <div class="flex flex-wrap gap-2">
@@ -808,12 +829,20 @@
                               <td class="py-3 text-xs text-slate-500 dark:text-slate-400">${formatDateIndo(tx.date)}</td>
                               <td class="py-3 text-right font-bold text-slate-800 dark:text-slate-100">${formatRupiah(tx.totalAmount)}</td>
                               <td class="py-3 text-center">
-                                <button
-                                  onclick="AppActions.navigate('receipt', { receiptId: '${tx.id}' })"
-                                  class="px-2.5 py-1 text-xs bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-brand-600 hover:text-white transition-colors"
-                                >
-                                  Kwitansi
-                                </button>
+                                <div class="flex items-center justify-center gap-1">
+                                  <button
+                                    onclick="AppActions.navigate('receipt', { receiptId: '${tx.id}' })"
+                                    class="px-2.5 py-1 text-xs bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-brand-600 hover:text-white transition-colors"
+                                  >
+                                    Kwitansi
+                                  </button>
+                                  <button
+                                    onclick="AppActions.openEditTransaction('${tx.id}')"
+                                    class="px-2.5 py-1 text-xs bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 rounded-lg hover:bg-amber-600 hover:text-white transition-colors font-medium"
+                                  >
+                                    Edit
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           `).join('')}
@@ -1238,13 +1267,15 @@
                   <h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">Riwayat Pembayaran Lengkap</h3>
                   <p id="history_count_summary" class="text-xs text-slate-500 dark:text-slate-400">Memuat riwayat transaksi...</p>
                 </div>
-                <button
-                  onclick="AppActions.navigate('payment')"
-                  class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-brand-600/20"
-                >
-                  ${getSvgIcon('plus', 'w-4 h-4')}
-                  <span>Transaksi Baru</span>
-                </button>
+                <div class="flex items-center gap-2">
+                  <button
+                    onclick="AppActions.navigate('payment')"
+                    class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-brand-600/20"
+                  >
+                    ${getSvgIcon('plus', 'w-4 h-4')}
+                    <span>Transaksi Baru</span>
+                  </button>
+                </div>
               </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
@@ -1309,7 +1340,7 @@
                       <th class="py-3.5 px-4">Rincian Item</th>
                       <th class="py-3.5 px-4 text-right">Total</th>
                       <th class="py-3.5 px-4">Petugas</th>
-                      <th class="py-3.5 px-4 text-center">Aksi</th>
+                      <th class="py-3.5 px-4 text-center">Aksi / Koreksi</th>
                     </tr>
                   </thead>
                   <tbody id="history_table_tbody" class="divide-y divide-slate-100 dark:divide-slate-700/60">
@@ -1329,7 +1360,7 @@
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">Daftar Status Tagihan Siswa</h3>
-                  <p class="text-xs text-slate-500 dark:text-slate-400">Pantau kewajiban dan sisa tagihan per siswa</p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">Pantau kewajiban dan sisa tagihan per siswa (Termasuk Buku 7 KIH)</p>
                 </div>
                 <button
                   onclick="AppActions.navigate('reports')"
@@ -1618,7 +1649,7 @@
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">Master Jenis Pembayaran & Tarif</h3>
-                <p class="text-xs text-slate-500 dark:text-slate-400">Atur tarif khusus Putra/Putri dan tambah pembayaran kustom</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Atur tarif khusus Putra/Putri (Termasuk Buku 7 KIH Rp 10.000) dan tambah tagihan baru</p>
               </div>
               <button
                 onclick="AppActions.openAddPaymentType()"
@@ -1758,7 +1789,7 @@
                       title="Unggah file foto / gambar tanda tangan guru"
                     >
                       ${getSvgIcon('signature', 'w-3.5 h-3.5')}
-                      <span>${Store.settings.teacherSignature ? 'Ganti TTD Guru' : 'Unggah TTD Guru'}</span>
+                      <span>${Store.settings.teacherSignature ? 'Ganti TTD' : 'Unggah TTD'}</span>
                     </button>
 
                     ${Store.settings.teacherSignature ? `
@@ -1785,13 +1816,24 @@
                 </div>
               </div>
 
-              <button
-                onclick="window.print()"
-                class="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-brand-600/20 self-end lg:self-center"
-              >
-                ${getSvgIcon('printer', 'w-4 h-4')}
-                <span>Cetak Kwitansi (Print)</span>
-              </button>
+              <div class="flex items-center gap-2 self-end lg:self-center">
+                <button
+                  onclick="AppActions.openEditTransaction('${tx.id}')"
+                  class="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20"
+                  title="Perbaiki atau koreksi data transaksi ini"
+                >
+                  ${getSvgIcon('edit', 'w-4 h-4')}
+                  <span>Koreksi / Edit Transaksi</span>
+                </button>
+
+                <button
+                  onclick="window.print()"
+                  class="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-brand-600/20"
+                >
+                  ${getSvgIcon('printer', 'w-4 h-4')}
+                  <span>Cetak Kwitansi (Print)</span>
+                </button>
+              </div>
             </div>
 
             <!-- RECEIPT SHEET PREVIEW -->
@@ -2471,7 +2513,7 @@
                 <div class="space-y-3 text-xs">
                   <div>
                     <label class="text-slate-400 block mb-1 font-medium">Nama Pembayaran *:</label>
-                    <input type="text" id="ptf_name" value="${escapeHtml(pt.name || '')}" placeholder="Contoh: Kegiatan Outbound..." class="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-semibold text-slate-800 dark:text-slate-100" />
+                    <input type="text" id="ptf_name" value="${escapeHtml(pt.name || '')}" placeholder="Contoh: Buku 7 KIH..." class="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-semibold text-slate-800 dark:text-slate-100" />
                   </div>
                   <div>
                     <label class="text-slate-400 block mb-1 font-medium">Berlaku Untuk:</label>
@@ -2518,62 +2560,153 @@
           `;
         }
 
+        // --- POWERFUL FULL EDIT / KOREKSI TRANSAKSI MODAL ---
         if (Store.modal.type === 'EDIT_TRANSACTION') {
           const tx = Store.modal.transaction;
+          const editItems = Store.modal.editItems || tx.items.map(i => ({ ...i }));
+
+          let total = 0;
+          editItems.forEach(i => { total += (Number(i.paidAmount) || 0); });
+          const cashRec = Store.modal.cashReceived !== undefined ? Store.modal.cashReceived : tx.cashReceived;
+          const change = (Number(cashRec) || 0) - total;
+          const isShortage = change < 0;
+
           return `
             <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-              <div class="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4">
+              <div class="bg-white dark:bg-slate-800 rounded-2xl max-w-2xl w-full p-6 border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
                 <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700">
                   <div>
-                    <h3 class="font-bold text-base text-slate-800 dark:text-slate-100">Koreksi Transaksi</h3>
-                    <p class="text-xs font-mono font-semibold text-brand-600">${escapeHtml(tx.receiptNo)}</p>
+                    <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-bold uppercase mb-1">
+                      Koreksi Transaksi
+                    </div>
+                    <h3 class="font-bold text-base text-slate-800 dark:text-slate-100">
+                      Perbaiki Data Pembayaran: ${escapeHtml(tx.studentName)}
+                    </h3>
+                    <p class="text-xs font-mono font-bold text-brand-600 dark:text-brand-400">${escapeHtml(tx.receiptNo)}</p>
                   </div>
                   <button onclick="AppActions.closeModal()" class="text-slate-400 hover:text-slate-600">${getSvgIcon('x', 'w-5 h-5')}</button>
                 </div>
 
-                <div class="space-y-3 text-xs">
-                  <div class="p-3 bg-slate-50 dark:bg-slate-700/40 rounded-xl">
-                    <div class="flex justify-between font-medium">
-                      <span class="text-slate-400">Siswa:</span>
-                      <span class="font-bold text-slate-800 dark:text-slate-100">${escapeHtml(tx.studentName)}</span>
+                <div class="space-y-4 text-xs">
+                  <!-- GENERAL TRANSACTION METADATA -->
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 dark:bg-slate-700/30 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div>
+                      <label class="text-slate-500 dark:text-slate-400 block mb-1 font-semibold">Tanggal Bayar:</label>
+                      <input 
+                        type="date" 
+                        id="etf_date" 
+                        value="${tx.date}" 
+                        class="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-semibold text-slate-800 dark:text-slate-100" 
+                      />
                     </div>
-                    <div class="flex justify-between font-medium mt-1">
-                      <span class="text-slate-400">Total Transaksi:</span>
-                      <span class="font-bold text-brand-600">${formatRupiah(tx.totalAmount)}</span>
+                    <div>
+                      <label class="text-slate-500 dark:text-slate-400 block mb-1 font-semibold">Nama Ortu di Kwitansi:</label>
+                      <input 
+                        type="text" 
+                        id="etf_parentName" 
+                        value="${escapeHtml(tx.parentName || '')}" 
+                        class="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-bold text-brand-700 dark:text-brand-300" 
+                      />
+                    </div>
+                    <div>
+                      <label class="text-slate-500 dark:text-slate-400 block mb-1 font-semibold">Nama Petugas:</label>
+                      <input 
+                        type="text" 
+                        id="etf_officer" 
+                        value="${escapeHtml(tx.officer || '')}" 
+                        class="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100" 
+                      />
+                    </div>
+                  </div>
+
+                  <!-- EDITABLE ITEMS LIST -->
+                  <div>
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="font-bold text-slate-700 dark:text-slate-200">Rincian Nominal & Status Item:</span>
+                      <span class="text-[11px] text-slate-400">Koreksi nominal jika salah input</span>
+                    </div>
+
+                    <div class="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                      ${editItems.map((it, idx) => `
+                        <div class="p-3 bg-slate-50 dark:bg-slate-700/40 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                          <div class="flex items-center justify-between gap-2">
+                            <span class="font-bold text-slate-800 dark:text-slate-100 text-xs">${idx + 1}. ${escapeHtml(it.paymentTypeName)}</span>
+                            <div class="flex items-center gap-1">
+                              <span class="text-slate-400 text-[11px]">Rp</span>
+                              <input 
+                                type="number" 
+                                value="${it.paidAmount}" 
+                                oninput="AppActions.onEditTxItemAmount(${idx}, this.value)"
+                                class="w-28 p-1.5 text-right bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg font-bold text-xs focus:ring-brand-500 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div class="grid grid-cols-2 gap-2 text-[11px]">
+                            <div>
+                              <select 
+                                onchange="AppActions.onEditTxItemStatus(${idx}, this.value)"
+                                class="w-full p-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200"
+                              >
+                                <option value="Lunas" ${it.status === 'Lunas' ? 'selected' : ''}>Lunas</option>
+                                <option value="Sebagian" ${it.status === 'Sebagian' ? 'selected' : ''}>Sebagian (Cicil)</option>
+                                <option value="Dibayar ke Guru Lain" ${it.status === 'Dibayar ke Guru Lain' ? 'selected' : ''}>Dibayar ke Guru Lain</option>
+                                <option value="Gratis/Pembebasan" ${it.status === 'Gratis/Pembebasan' ? 'selected' : ''}>Gratis / Pembebasan</option>
+                                <option value="Koreksi" ${it.status === 'Koreksi' ? 'selected' : ''}>Koreksi</option>
+                              </select>
+                            </div>
+                            <div>
+                              <input 
+                                type="text" 
+                                placeholder="Catatan item (opsional)..."
+                                value="${escapeHtml(it.notes || '')}"
+                                oninput="AppActions.onEditTxItemNotes(${idx}, this.value)"
+                                class="w-full p-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+
+                  <!-- RECALCULATED TOTAL & CASH RECEIVED -->
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                    <div>
+                      <span class="text-slate-500 dark:text-slate-400 block mb-0.5">Total Nominal Transaksi:</span>
+                      <span class="text-xl font-black text-brand-700 dark:text-brand-300">${formatRupiah(total)}</span>
+                    </div>
+                    <div>
+                      <label class="text-slate-500 dark:text-slate-400 block mb-0.5 font-semibold">Uang Diterima dari Ortu (Rp):</label>
+                      <input 
+                        type="number" 
+                        id="etf_cashReceived" 
+                        value="${cashRec}" 
+                        oninput="AppActions.onEditTxCashReceived(this.value)"
+                        class="w-full p-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg font-extrabold text-sm" 
+                      />
+                      <div class="text-[11px] mt-1 font-semibold ${isShortage ? 'text-rose-600' : 'text-emerald-700'}">
+                        ${isShortage ? 'Kurang: ' : 'Kembalian: '}${formatRupiah(Math.abs(change))}
+                      </div>
                     </div>
                   </div>
 
                   <div>
-                    <label class="text-slate-400 block mb-1 font-medium">Tanggal Transaksi:</label>
-                    <input type="date" id="etf_date" value="${tx.date}" class="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-semibold text-slate-800 dark:text-slate-100" />
-                  </div>
-                  <div>
-                    <label class="text-slate-400 block mb-1 font-medium">Nama Orang Tua / Wali di Kwitansi:</label>
-                    <input type="text" id="etf_parentName" value="${escapeHtml(tx.parentName || '')}" class="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-bold text-brand-600 dark:text-brand-400" />
-                  </div>
-                  <div>
-                    <label class="text-slate-400 block mb-1 font-medium">Nominal Uang Diterima (Rp):</label>
-                    <input type="number" id="etf_cashReceived" value="${tx.cashReceived}" class="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-bold text-slate-800 dark:text-slate-100" />
-                  </div>
-                  <div>
-                    <label class="text-slate-400 block mb-1 font-medium">Nama Petugas:</label>
-                    <input type="text" id="etf_officer" value="${escapeHtml(tx.officer || '')}" class="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100" />
-                  </div>
-                  <div>
                     <label class="text-slate-400 block mb-1 font-medium">Catatan Umum Kwitansi:</label>
-                    <textarea id="etf_notes" rows="2" class="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100">${escapeHtml(tx.generalNotes || '')}</textarea>
+                    <textarea id="etf_notes" rows="1" class="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100">${escapeHtml(tx.generalNotes || '')}</textarea>
                   </div>
+
                   <div>
                     <label class="text-slate-400 block mb-1 font-medium">Alasan / Catatan Koreksi (Audit Log):</label>
                     <input type="text" id="etf_correctionNote" placeholder="Contoh: Salah input nominal / ganti orang tua..." class="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100" />
                   </div>
                 </div>
 
-                <div class="flex gap-2 pt-2">
-                  <button onclick="AppActions.saveEditTransaction()" class="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs">
-                    Simpan Hasil Koreksi
+                <div class="flex gap-2 pt-3 border-t border-slate-100 dark:border-slate-700">
+                  <button onclick="AppActions.saveEditTransaction()" class="flex-1 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs shadow-md">
+                    Simpan Perubahan & Koreksi
                   </button>
-                  <button onclick="AppActions.closeModal()" class="px-4 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold rounded-xl text-xs">
+                  <button onclick="AppActions.closeModal()" class="px-5 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold rounded-xl text-xs">
                     Batal
                   </button>
                 </div>
@@ -3085,10 +3218,11 @@
                     </button>
                     <button
                       onclick="AppActions.openEditTransaction('${tx.id}')"
-                      title="Koreksi Transaksi"
-                      class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-amber-50 hover:text-amber-600"
+                      title="Koreksi / Edit Transaksi"
+                      class="px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-600 hover:text-white text-[11px] font-bold flex items-center gap-1 transition-colors"
                     >
-                      ${getSvgIcon('edit', 'w-4 h-4')}
+                      ${getSvgIcon('edit', 'w-3.5 h-3.5')}
+                      <span>Edit</span>
                     </button>
                     <button
                       onclick="AppActions.deleteTransaction('${tx.id}')"
@@ -3291,45 +3425,82 @@
           }
         },
 
+        // --- FULL TRANSACTION EDIT ACTION HANDLERS ---
         openEditTransaction(id) {
           const tx = Store.transactions.find(t => t.id === id);
           if (!tx) return;
           Store.modal = {
             type: 'EDIT_TRANSACTION',
-            transaction: tx
+            transaction: tx,
+            editItems: tx.items.map(i => ({ ...i })),
+            cashReceived: tx.cashReceived
           };
           Store.render();
         },
 
+        onEditTxItemAmount(idx, val) {
+          if (Store.modal && Store.modal.editItems && Store.modal.editItems[idx]) {
+            Store.modal.editItems[idx].paidAmount = Math.max(0, parseInt(val, 10) || 0);
+            Store.render();
+          }
+        },
+
+        onEditTxItemStatus(idx, val) {
+          if (Store.modal && Store.modal.editItems && Store.modal.editItems[idx]) {
+            Store.modal.editItems[idx].status = val;
+          }
+        },
+
+        onEditTxItemNotes(idx, val) {
+          if (Store.modal && Store.modal.editItems && Store.modal.editItems[idx]) {
+            Store.modal.editItems[idx].notes = val;
+          }
+        },
+
+        onEditTxCashReceived(val) {
+          if (Store.modal) {
+            Store.modal.cashReceived = val;
+            Store.render();
+          }
+        },
+
         saveEditTransaction() {
           const tx = Store.modal.transaction;
+          const editItems = Store.modal.editItems;
           const date = document.getElementById('etf_date').value;
           const parentName = document.getElementById('etf_parentName').value;
-          const cashRec = Number(document.getElementById('etf_cashReceived').value) || tx.totalAmount;
           const officer = document.getElementById('etf_officer').value;
           const notes = document.getElementById('etf_notes').value;
           const corrNote = document.getElementById('etf_correctionNote').value;
+
+          let newTotal = 0;
+          editItems.forEach(it => { newTotal += (Number(it.paidAmount) || 0); });
+
+          const cashRec = Number(document.getElementById('etf_cashReceived').value) || newTotal;
+          const change = Math.max(0, cashRec - newTotal);
 
           const updated = {
             ...tx,
             date: date,
             parentName: parentName,
+            items: editItems,
+            totalAmount: newTotal,
             cashReceived: cashRec,
-            changeAmount: Math.max(0, cashRec - tx.totalAmount),
+            changeAmount: change,
             officer: officer,
             generalNotes: notes,
             isCorrected: true,
             updatedAt: new Date().toISOString(),
             correctionHistory: [
               ...(tx.correctionHistory || []),
-              { correctedAt: new Date().toISOString(), note: corrNote || 'Koreksi data transaksi' }
+              { correctedAt: new Date().toISOString(), note: corrNote || 'Koreksi data pembayaran' }
             ]
           };
 
           Store.transactions = Store.transactions.map(t => t.id === tx.id ? updated : t);
           Store.save();
           Store.closeModal();
-          Store.showToast('Transaksi berhasil dikoreksi.');
+          Store.showToast(`Transaksi ${tx.receiptNo} berhasil diperbarui.`);
           this.updateHistoryTableDOM();
         },
 
