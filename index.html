@@ -336,7 +336,7 @@
         historyFilter: { search: '', studentId: 'ALL', startDate: '', endDate: '', sort: 'NEWEST' },
         billingFilter: { status: 'ALL', search: '' },
         studentsFilter: { search: '', gender: 'ALL' },
-        reportState: { type: 'CLASS_SUMMARY', date: getTodayISO() },
+        reportState: { type: 'PER_STUDENT_DETAILED', date: getTodayISO() },
 
         init() {
           try {
@@ -1887,8 +1887,7 @@
           </div>
         `;
       }
-
-      function renderReceipt() {
+     function renderReceipt() {
         if (Store.transactions.length === 0) {
           return `
             <div class="p-12 text-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
@@ -2387,29 +2386,29 @@
             </div>
           </div>
         `;
-      }
-
-      function renderReports(stats) {
+      }     function renderReports(stats) {
         const studentMatrix = Store.students.filter(s => s.active).map(st => Store.getStudentSummary(st));
+        const reportType = Store.reportState.type || 'PER_STUDENT_DETAILED';
         
         return `
           <div class="space-y-6">
+            <!-- TOOLBAR ATAS -->
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
               <div>
-                <h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">Laporan & Rekapitulasi Keuangan</h3>
-                <p class="text-xs text-slate-500 dark:text-slate-400">Export laporan ke Excel (.xlsx) atau cetak resmi</p>
+                <h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">Laporan & Rekapitulasi Keuangan Kelas 1</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Pantau rincian pembayaran seluruh siswa: nominal sudah dibayar, item yang dibayar, kekurangan & status pelunasan</p>
               </div>
               <div class="flex flex-wrap gap-2">
                 <button
                   onclick="AppActions.exportExcel()"
-                  class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md"
+                  class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
                 >
                   ${getSvgIcon('fileSpreadsheet', 'w-4 h-4')}
                   <span>Export Excel (.xlsx)</span>
                 </button>
                 <button
                   onclick="window.print()"
-                  class="px-4 py-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5"
+                  class="px-4 py-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 shadow-md"
                 >
                   ${getSvgIcon('printer', 'w-4 h-4')}
                   <span>Cetak Laporan</span>
@@ -2417,22 +2416,34 @@
               </div>
             </div>
 
+            <!-- TABS PILIHAN LAPORAN -->
             <div class="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-700 pb-3 no-print">
               <button
-                onclick="Store.reportState.type = 'CLASS_SUMMARY'; Store.render();"
-                class="px-4 py-2 rounded-xl text-xs font-bold ${Store.reportState.type === 'CLASS_SUMMARY' ? 'bg-brand-600 text-white shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 border'}"
+                onclick="AppActions.setReportType('PER_STUDENT_DETAILED')"
+                class="px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${reportType === 'PER_STUDENT_DETAILED' ? 'bg-brand-600 text-white shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border hover:bg-slate-50'}"
               >
-                1. Rekap Eksekutif Kelas
+                ${getSvgIcon('billing', 'w-4 h-4')}
+                <span>1. Rekap Rincian Seluruh Siswa (Sudah Bayar & Kurang)</span>
               </button>
               <button
-                onclick="Store.reportState.type = 'PER_STUDENT'; Store.render();"
-                class="px-4 py-2 rounded-xl text-xs font-bold ${Store.reportState.type === 'PER_STUDENT' ? 'bg-brand-600 text-white shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 border'}"
+                onclick="AppActions.setReportType('PAYMENT_MATRIX')"
+                class="px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${reportType === 'PAYMENT_MATRIX' ? 'bg-brand-600 text-white shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border hover:bg-slate-50'}"
               >
-                2. Rekap Seluruh Siswa
+                ${getSvgIcon('layers', 'w-4 h-4')}
+                <span>2. Matriks Tabel Pos Pembayaran (Semua Item)</span>
+              </button>
+              <button
+                onclick="AppActions.setReportType('CLASS_SUMMARY')"
+                class="px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${reportType === 'CLASS_SUMMARY' ? 'bg-brand-600 text-white shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border hover:bg-slate-50'}"
+              >
+                ${getSvgIcon('reports', 'w-4 h-4')}
+                <span>3. Ringkasan Eksekutif Kelas</span>
               </button>
             </div>
 
+            <!-- SHEET LAPORAN RESMI CETAK -->
             <div class="bg-white text-slate-900 rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm print-shadow-none print-full-width">
+              <!-- KOP RESMI SEKOLAH DENGAN LOGO SD -->
               <div class="border-b-2 border-slate-900 pb-4 mb-6 text-center">
                 <div class="flex items-center justify-center gap-4 mb-2">
                   <div class="w-14 h-14 flex items-center justify-center flex-shrink-0">
@@ -2447,109 +2458,25 @@
                     <p class="text-xs text-slate-600">${escapeHtml(Store.settings.schoolAddress || 'Kec. Purwojati, Kab. Banyumas, Jawa Tengah')}</p>
                   </div>
                 </div>
-                <h3 class="text-sm font-bold uppercase mt-2 tracking-wider underline">
-                  ${Store.reportState.type === 'CLASS_SUMMARY' ? 'LAPORAN REKAPITULASI KEUANGAN KELAS 1' : 'LAPORAN STATUS PEMBAYARAN INDIVIDUAL SISWA'}
+                <h3 class="text-sm font-black uppercase mt-2 tracking-wider underline">
+                  ${
+                    reportType === 'PER_STUDENT_DETAILED' ? 'LAPORAN REKAPITULASI RINCIAN PEMBAYARAN SISWA KELAS 1' :
+                    reportType === 'PAYMENT_MATRIX' ? 'MATRIKS POS PEMBAYARAN & IURAN SISWA KELAS 1' :
+                    'LAPORAN REKAPITULASI KEUANGAN & PROGRESS KELAS 1'
+                  }
                 </h3>
                 <p class="text-[11px] text-slate-500 mt-0.5">Tahun Ajaran ${escapeHtml(Store.settings.academicYear)} • Posisi Data: ${formatDateIndo(getTodayISO())}</p>
               </div>
 
-              ${Store.reportState.type === 'CLASS_SUMMARY' ? `
-                <div class="space-y-6">
-                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <span class="text-slate-500 block">Total Siswa Aktif:</span>
-                      <span class="text-lg font-bold">${stats.totalStudents} Siswa</span>
-                    </div>
-                    <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <span class="text-slate-500 block">Target Tagihan:</span>
-                      <span class="text-lg font-bold">${formatRupiah(stats.totalClassTarget)}</span>
-                    </div>
-                    <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <span class="text-slate-500 block">Sudah Terkumpul:</span>
-                      <span class="text-lg font-bold text-emerald-700">${formatRupiah(stats.totalClassPaid)}</span>
-                    </div>
-                    <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <span class="text-slate-500 block">Sisa Tunggakan:</span>
-                      <span class="text-lg font-bold text-rose-700">${formatRupiah(stats.totalClassRemaining)}</span>
-                    </div>
-                  </div>
+              <!-- ISI LAPORAN SESUAI TAB -->
+              ${
+                reportType === 'PER_STUDENT_DETAILED' ? renderReportDetailedList(studentMatrix, stats) :
+                reportType === 'PAYMENT_MATRIX' ? renderReportPaymentMatrix(studentMatrix, stats) :
+                renderReportExecutiveSummary(stats)
+              }
 
-                  <div class="border border-slate-300 rounded-xl overflow-hidden">
-                    <table class="w-full text-xs text-left">
-                      <thead class="bg-slate-100 font-bold border-b border-slate-300">
-                        <tr>
-                          <th class="py-2.5 px-4">Kategori Status</th>
-                          <th class="py-2.5 px-4 text-center">Jumlah Siswa</th>
-                          <th class="py-2.5 px-4 text-center">Persentase Siswa</th>
-                          <th class="py-2.5 px-4 text-right">Keterangan</th>
-                        </tr>
-                      </thead>
-                      <tbody class="divide-y divide-slate-200">
-                        <tr>
-                          <td class="py-2.5 px-4 font-semibold text-emerald-700">Lunas (100% Kewajiban)</td>
-                          <td class="py-2.5 px-4 text-center font-bold">${stats.lunasCount}</td>
-                          <td class="py-2.5 px-4 text-center font-semibold">${Math.round((stats.lunasCount / (stats.totalStudents || 1)) * 100)}%</td>
-                          <td class="py-2.5 px-4 text-slate-500 text-right">Tidak ada sisa tagihan</td>
-                        </tr>
-                        <tr>
-                          <td class="py-2.5 px-4 font-semibold text-amber-700">Sebagian (Sedang Mencicil)</td>
-                          <td class="py-2.5 px-4 text-center font-bold">${stats.sebagianCount}</td>
-                          <td class="py-2.5 px-4 text-center font-semibold">${Math.round((stats.sebagianCount / (stats.totalStudents || 1)) * 100)}%</td>
-                          <td class="py-2.5 px-4 text-slate-500 text-right">Terdapat sisa tunggakan</td>
-                        </tr>
-                        <tr>
-                          <td class="py-2.5 px-4 font-semibold text-rose-700">Belum Bayar (Belum Ada Cicilan)</td>
-                          <td class="py-2.5 px-4 text-center font-bold">${stats.belumBayarCount}</td>
-                          <td class="py-2.5 px-4 text-center font-semibold">${Math.round((stats.belumBayarCount / (stats.totalStudents || 1)) * 100)}%</td>
-                          <td class="py-2.5 px-4 text-slate-500 text-right">Tagihan penuh belum dibayar</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ` : `
-                <div class="border border-slate-300 rounded-xl overflow-hidden">
-                  <table class="w-full text-xs text-left">
-                    <thead class="bg-slate-100 font-bold border-b border-slate-300">
-                      <tr>
-                        <th class="py-2.5 px-3 text-center w-10">No</th>
-                        <th class="py-2.5 px-3">Nama Lengkap Siswa</th>
-                        <th class="py-2.5 px-3">Orang Tua / Wali</th>
-                        <th class="py-2.5 px-3 text-center">L/P</th>
-                        <th class="py-2.5 px-3 text-right">Target (Rp)</th>
-                        <th class="py-2.5 px-3 text-right">Dibayar (Rp)</th>
-                        <th class="py-2.5 px-3 text-right">Sisa (Rp)</th>
-                        <th class="py-2.5 px-3 text-center">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-200">
-                      ${studentMatrix.map((st, idx) => `
-                        <tr>
-                          <td class="py-2 px-3 text-center text-slate-500">${idx + 1}</td>
-                          <td class="py-2 px-3 font-semibold">${escapeHtml(st.student.name)}</td>
-                          <td class="py-2 px-3">${escapeHtml(st.student.parentName || st.student.father || st.student.mother || '-')}</td>
-                          <td class="py-2 px-3 text-center">${st.student.gender === 'Putri' ? 'P' : 'L'}</td>
-                          <td class="py-2 px-3 text-right">${formatRupiah(st.totalTarget)}</td>
-                          <td class="py-2 px-3 text-right font-semibold text-emerald-800">${formatRupiah(st.totalPaid)}</td>
-                          <td class="py-2 px-3 text-right font-bold text-rose-800">${formatRupiah(st.remainingTarget)}</td>
-                          <td class="py-2 px-3 text-center font-bold text-[10px]">${st.overallStatus}</td>
-                        </tr>
-                      `).join('')}
-                    </tbody>
-                    <tfoot class="bg-slate-100 font-bold border-t border-slate-300">
-                      <tr>
-                        <td colSpan="4" class="py-2.5 px-3 text-right uppercase">Total Kelas:</td>
-                        <td class="py-2.5 px-3 text-right">${formatRupiah(stats.totalClassTarget)}</td>
-                        <td class="py-2.5 px-3 text-right text-emerald-800">${formatRupiah(stats.totalClassPaid)}</td>
-                        <td class="py-2.5 px-3 text-right text-rose-800">${formatRupiah(stats.totalClassRemaining)}</td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              `}
-
-              <div class="grid grid-cols-2 gap-8 text-center text-xs mt-10 pt-4">
+              <!-- TANDA TANGAN KEPALA SEKOLAH & GURU KELAS 1 -->
+              <div class="grid grid-cols-2 gap-8 text-center text-xs mt-10 pt-4 break-inside-avoid">
                 <div>
                   <p class="text-slate-500 mb-14">Mengetahui,<br />Kepala Sekolah</p>
                   <p class="font-bold text-slate-900 border-t border-slate-400 inline-block px-8 pt-1">
@@ -2571,7 +2498,287 @@
         `;
       }
 
-      function renderSettings() {
+      // 1. FORMAT LAPORAN RINCIAN DETAIL (BAYAR APA SAJA & KEKURANGAN)
+      function renderReportDetailedList(studentMatrix, stats) {
+        return `
+          <div class="space-y-6">
+            <!-- KARTU STATISTIK RINGKAS DI ATAS LAPORAN -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span class="text-slate-500 block">Total Siswa:</span>
+                <span class="text-base font-bold text-slate-800">${stats.totalStudents} Siswa</span>
+              </div>
+              <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span class="text-slate-500 block">Total Kewajiban Tagihan:</span>
+                <span class="text-base font-bold text-brand-700">${formatRupiah(stats.totalClassTarget)}</span>
+              </div>
+              <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span class="text-slate-500 block">Total Sudah Terkumpul:</span>
+                <span class="text-base font-bold text-emerald-700">${formatRupiah(stats.totalClassPaid)}</span>
+              </div>
+              <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span class="text-slate-500 block">Total Sisa Kekurangan:</span>
+                <span class="text-base font-bold text-rose-700">${formatRupiah(stats.totalClassRemaining)}</span>
+              </div>
+            </div>
+
+            <!-- TABEL UTAMA LAPORAN PEMBAYARAN SELURUH SISWA -->
+            <div class="border border-slate-300 rounded-xl overflow-hidden shadow-sm">
+              <table class="w-full text-xs text-left">
+                <thead class="bg-slate-100 font-bold border-b border-slate-300 text-slate-700 uppercase">
+                  <tr>
+                    <th class="py-3 px-3 text-center w-8">No</th>
+                    <th class="py-3 px-3 w-44">Nama Siswa & Ortu</th>
+                    <th class="py-3 px-3 text-right w-24">Target Tagihan</th>
+                    <th class="py-3 px-3 text-right w-24">Sudah Dibayar</th>
+                    <th class="py-3 px-3 text-right w-24">Sisa Kurang</th>
+                    <th class="py-3 px-3 text-center w-24">Status</th>
+                    <th class="py-3 px-3">Item yang Sudah Dibayar</th>
+                    <th class="py-3 px-3">Kekurangan / Belum Bayar</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200">
+                  ${studentMatrix.map((item, idx) => {
+                    const st = item.student;
+                    const paidItems = item.itemBreakdowns.filter(i => i.paidAmount > 0);
+                    const unpaidItems = item.itemBreakdowns.filter(i => i.remainingAmount > 0);
+
+                    return `
+                      <tr class="hover:bg-slate-50">
+                        <td class="py-3 px-3 text-center font-semibold text-slate-500">${idx + 1}</td>
+                        <td class="py-3 px-3">
+                          <div class="font-bold text-slate-900">${escapeHtml(st.name)}</div>
+                          <div class="text-[10px] text-slate-500">Ortu: ${escapeHtml(st.parentName || st.father || st.mother || '-')}</div>
+                          <div class="text-[9px] text-slate-400">Gender: ${st.gender === 'Putri' ? 'Perempuan (P)' : 'Laki-laki (L)'}</div>
+                        </td>
+                        <td class="py-3 px-3 text-right font-medium text-slate-700">${formatRupiah(item.totalTarget)}</td>
+                        <td class="py-3 px-3 text-right font-bold text-emerald-700">${formatRupiah(item.totalPaid)}</td>
+                        <td class="py-3 px-3 text-right font-bold ${item.remainingTarget > 0 ? 'text-rose-700' : 'text-slate-400'}">
+                          ${item.remainingTarget > 0 ? formatRupiah(item.remainingTarget) : 'Rp 0'}
+                        </td>
+                        <td class="py-3 px-3 text-center">
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold inline-block ${
+                            item.overallStatus === 'LUNAS' 
+                              ? 'bg-emerald-100 text-emerald-800' 
+                              : item.overallStatus === 'SEBAGIAN' 
+                              ? 'bg-amber-100 text-amber-800' 
+                              : 'bg-rose-100 text-rose-800'
+                          }">
+                            ${item.overallStatus}
+                          </span>
+                        </td>
+                        <!-- KOLOM BAYAR APA SAJA -->
+                        <td class="py-3 px-3">
+                          ${paidItems.length === 0 ? `
+                            <span class="text-[11px] text-slate-400 italic">Belum ada pembayaran</span>
+                          ` : `
+                            <div class="space-y-1">
+                              ${paidItems.map(p => `
+                                <div class="text-[10.5px] leading-tight">
+                                  <span class="font-semibold text-slate-800">• ${escapeHtml(p.name)}:</span> 
+                                  <span class="text-emerald-700 font-bold">${formatRupiah(p.paidAmount)}</span>
+                                  ${p.status === 'Sebagian' ? `<span class="text-[9px] text-amber-600 font-bold">(Dicicil)</span>` : ''}
+                                  ${p.notes ? `<span class="text-[9.5px] text-slate-400 italic">(${escapeHtml(p.notes)})</span>` : ''}
+                                </div>
+                              `).join('')}
+                            </div>
+                          `}
+                        </td>
+                        <!-- KOLOM SISA KEKURANGAN ITEM -->
+                        <td class="py-3 px-3">
+                          ${unpaidItems.length === 0 ? `
+                            <div class="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                              <span>✓ Semua Tagihan Lunas</span>
+                            </div>
+                          ` : `
+                            <div class="space-y-1">
+                              ${unpaidItems.map(u => `
+                                <div class="text-[10.5px] leading-tight">
+                                  <span class="text-slate-700">• ${escapeHtml(u.name)}:</span> 
+                                  <span class="text-rose-600 font-bold">Kurang ${formatRupiah(u.remainingAmount)}</span>
+                                </div>
+                              `).join('')}
+                            </div>
+                          `}
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+                <tfoot class="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900">
+                  <tr>
+                    <td colSpan="2" class="py-3 px-3 text-right uppercase">Total Seluruh Kelas 1:</td>
+                    <td class="py-3 px-3 text-right text-brand-700">${formatRupiah(stats.totalClassTarget)}</td>
+                    <td class="py-3 px-3 text-right text-emerald-700">${formatRupiah(stats.totalClassPaid)}</td>
+                    <td class="py-3 px-3 text-right text-rose-700">${formatRupiah(stats.totalClassRemaining)}</td>
+                    <td class="py-3 px-3 text-center text-[10px]">${stats.lunasCount} Lunas / ${stats.totalStudents} Siswa</td>
+                    <td colSpan="2" class="py-3 px-3 text-slate-500 font-medium">
+                      Akumulasi ${Math.round((stats.totalClassPaid / (stats.totalClassTarget || 1)) * 100)}% Terbayar
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      // 2. FORMAT MATRIKS LENGKAP SEMUA JENIS PEMBAYARAN
+      function renderReportPaymentMatrix(studentMatrix, stats) {
+        const pTypes = Store.paymentTypes.filter(p => p.active);
+
+        return `
+          <div class="space-y-4">
+            <div class="border border-slate-300 rounded-xl overflow-x-auto shadow-sm">
+              <table class="w-full text-[10.5px] text-left min-w-[950px]">
+                <thead class="bg-slate-100 font-bold border-b border-slate-300 text-slate-700 uppercase">
+                  <tr>
+                    <th class="py-2.5 px-2 text-center w-8">No</th>
+                    <th class="py-2.5 px-2 min-w-[140px]">Nama Siswa</th>
+                    <th class="py-2.5 px-1 text-center w-8">L/P</th>
+                    ${pTypes.map(pt => `
+                      <th class="py-2.5 px-2 text-right min-w-[90px]" title="${escapeHtml(pt.name)}">
+                        ${escapeHtml(pt.name.length > 12 ? pt.name.substring(0, 10) + '..' : pt.name)}
+                      </th>
+                    `).join('')}
+                    <th class="py-2.5 px-2 text-right min-w-[90px] bg-slate-200/60">Total Target</th>
+                    <th class="py-2.5 px-2 text-right min-w-[90px] bg-emerald-50 text-emerald-800">Sudah Bayar</th>
+                    <th class="py-2.5 px-2 text-right min-w-[90px] bg-rose-50 text-rose-800">Sisa Kurang</th>
+                    <th class="py-2.5 px-2 text-center min-w-[80px]">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200">
+                  ${studentMatrix.map((item, idx) => {
+                    const st = item.student;
+                    return `
+                      <tr class="hover:bg-slate-50">
+                        <td class="py-2 px-2 text-center font-medium text-slate-500">${idx + 1}</td>
+                        <td class="py-2 px-2 font-bold text-slate-900 whitespace-nowrap">
+                          ${escapeHtml(st.name)}
+                          <span class="block text-[9px] font-normal text-slate-400 truncate max-w-[130px]">${escapeHtml(st.parentName || '-')}</span>
+                        </td>
+                        <td class="py-2 px-1 text-center font-bold ${st.gender === 'Putri' ? 'text-pink-600' : 'text-blue-600'}">
+                          ${st.gender === 'Putri' ? 'P' : 'L'}
+                        </td>
+                        ${pTypes.map(pt => {
+                          const ib = item.itemBreakdowns.find(b => b.paymentTypeId === pt.id);
+                          if (!ib) {
+                            return `<td class="py-2 px-2 text-center text-slate-300">-</td>`;
+                          }
+                          const isLunas = ib.status === 'Lunas';
+                          const isSebagian = ib.status === 'Sebagian';
+                          return `
+                            <td class="py-2 px-2 text-right">
+                              ${isLunas ? `
+                                <span class="font-bold text-emerald-700">${formatRupiah(ib.paidAmount)}</span>
+                                <span class="block text-[8px] text-emerald-600 font-semibold">✓ Lunas</span>
+                              ` : isSebagian ? `
+                                <span class="font-bold text-amber-700">${formatRupiah(ib.paidAmount)}</span>
+                                <span class="block text-[8px] text-amber-600 font-semibold">Sisa: ${formatRupiah(ib.remainingAmount)}</span>
+                              ` : `
+                                <span class="text-slate-400 font-medium">${formatRupiah(ib.billPrice)}</span>
+                                <span class="block text-[8px] text-rose-500 font-semibold">Belum</span>
+                              `}
+                            </td>
+                          `;
+                        }).join('')}
+                        <td class="py-2 px-2 text-right font-bold bg-slate-100/60">${formatRupiah(item.totalTarget)}</td>
+                        <td class="py-2 px-2 text-right font-bold text-emerald-700 bg-emerald-50/50">${formatRupiah(item.totalPaid)}</td>
+                        <td class="py-2 px-2 text-right font-bold text-rose-700 bg-rose-50/50">${formatRupiah(item.remainingTarget)}</td>
+                        <td class="py-2 px-2 text-center">
+                          <span class="px-1.5 py-0.5 rounded text-[9px] font-bold inline-block ${
+                            item.overallStatus === 'LUNAS' ? 'bg-emerald-100 text-emerald-800' :
+                            item.overallStatus === 'SEBAGIAN' ? 'bg-amber-100 text-amber-800' :
+                            'bg-rose-100 text-rose-800'
+                          }">
+                            ${item.overallStatus}
+                          </span>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+                <tfoot class="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900">
+                  <tr>
+                    <td colSpan="3" class="py-2.5 px-2 text-right uppercase">Total:</td>
+                    ${pTypes.map(pt => {
+                      let colPaid = 0;
+                      studentMatrix.forEach(m => {
+                        const ib = m.itemBreakdowns.find(b => b.paymentTypeId === pt.id);
+                        if (ib) colPaid += ib.paidAmount;
+                      });
+                      return `<td class="py-2.5 px-2 text-right text-emerald-800">${formatRupiah(colPaid)}</td>`;
+                    }).join('')}
+                    <td class="py-2.5 px-2 text-right text-brand-700">${formatRupiah(stats.totalClassTarget)}</td>
+                    <td class="py-2.5 px-2 text-right text-emerald-700">${formatRupiah(stats.totalClassPaid)}</td>
+                    <td class="py-2.5 px-2 text-right text-rose-700">${formatRupiah(stats.totalClassRemaining)}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      // 3. FORMAT RINGKASAN EKSEKUTIF KELAS
+      function renderReportExecutiveSummary(stats) {
+        return `
+          <div class="space-y-6">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span class="text-slate-500 block">Total Siswa Aktif:</span>
+                <span class="text-lg font-bold">${stats.totalStudents} Siswa</span>
+              </div>
+              <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span class="text-slate-500 block">Target Tagihan:</span>
+                <span class="text-lg font-bold">${formatRupiah(stats.totalClassTarget)}</span>
+              </div>
+              <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span class="text-slate-500 block">Sudah Terkumpul:</span>
+                <span class="text-lg font-bold text-emerald-700">${formatRupiah(stats.totalClassPaid)}</span>
+              </div>
+              <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span class="text-slate-500 block">Sisa Tunggakan:</span>
+                <span class="text-lg font-bold text-rose-700">${formatRupiah(stats.totalClassRemaining)}</span>
+              </div>
+            </div>
+
+            <div class="border border-slate-300 rounded-xl overflow-hidden shadow-sm">
+              <table class="w-full text-xs text-left">
+                <thead class="bg-slate-100 font-bold border-b border-slate-300">
+                  <tr>
+                    <th class="py-2.5 px-4">Kategori Status Pelunasan</th>
+                    <th class="py-2.5 px-4 text-center">Jumlah Siswa</th>
+                    <th class="py-2.5 px-4 text-center">Persentase Siswa</th>
+                    <th class="py-2.5 px-4 text-right">Keterangan</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200">
+                  <tr>
+                    <td class="py-2.5 px-4 font-semibold text-emerald-700">Lunas (100% Kewajiban)</td>
+                    <td class="py-2.5 px-4 text-center font-bold">${stats.lunasCount} Siswa</td>
+                    <td class="py-2.5 px-4 text-center font-semibold">${Math.round((stats.lunasCount / (stats.totalStudents || 1)) * 100)}%</td>
+                    <td class="py-2.5 px-4 text-slate-500 text-right">Tidak ada sisa tunggakan</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2.5 px-4 font-semibold text-amber-700">Sebagian (Sedang Mencicil)</td>
+                    <td class="py-2.5 px-4 text-center font-bold">${stats.sebagianCount} Siswa</td>
+                    <td class="py-2.5 px-4 text-center font-semibold">${Math.round((stats.sebagianCount / (stats.totalStudents || 1)) * 100)}%</td>
+                    <td class="py-2.5 px-4 text-slate-500 text-right">Terdapat sisa tunggakan</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2.5 px-4 font-semibold text-rose-700">Belum Bayar (Belum Ada Cicilan)</td>
+                    <td class="py-2.5 px-4 text-center font-bold">${stats.belumBayarCount} Siswa</td>
+                    <td class="py-2.5 px-4 text-center font-semibold">${Math.round((stats.belumBayarCount / (stats.totalStudents || 1)) * 100)}%</td>
+                    <td class="py-2.5 px-4 text-slate-500 text-right">Tagihan penuh belum dibayar</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }     function renderSettings() {
         return `
           <div class="max-w-4xl mx-auto space-y-6">
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
@@ -3214,7 +3421,6 @@
           </div>
         `;
       }
-
       window.AppActions = {
         navigate(tab, extra) {
           Store.navigate(tab, extra);
@@ -3252,6 +3458,11 @@
 
         setMultiReceiptDateFilter(filter) {
           Store.multiReceiptDateFilter = filter;
+          Store.render();
+        },
+
+        setReportType(type) {
+          Store.reportState.type = type;
           Store.render();
         },
 
@@ -4456,24 +4667,59 @@
           const wb = XLSX.utils.book_new();
 
           const studentMatrix = Store.students.filter(s => s.active).map(st => Store.getStudentSummary(st));
-          const rowsStudents = studentMatrix.map((item, idx) => ({
-            "No": idx + 1,
-            "Nama Siswa": item.student.name,
-            "Jenis Kelamin": item.student.gender,
-            "Kelas": item.student.class || '1',
-            "Orang Tua / Wali": item.student.parentName || item.student.father || item.student.mother || '',
-            "Ayah": item.student.father || '',
-            "Ibu": item.student.mother || '',
-            "Pekerjaan": item.student.job || '',
-            "TTL": item.student.ttl || '',
-            "Alamat": item.student.address || '',
-            "Total Tagihan (Rp)": item.totalTarget,
-            "Sudah Dibayar (Rp)": item.totalPaid,
-            "Sisa Tagihan (Rp)": item.remainingTarget,
-            "Status": item.overallStatus
-          }));
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsStudents), "Rekap Siswa");
+          const pTypes = Store.paymentTypes.filter(p => p.active);
 
+          // Sheet 1: Rekap Rincian Lengkap Siswa
+          const rowsStudents = studentMatrix.map((item, idx) => {
+            const paidItemsList = item.itemBreakdowns
+              .filter(i => i.paidAmount > 0)
+              .map(i => `${i.name}: ${formatRupiah(i.paidAmount)}`)
+              .join('; ');
+
+            const unpaidItemsList = item.itemBreakdowns
+              .filter(i => i.remainingAmount > 0)
+              .map(i => `${i.name}: Kurang ${formatRupiah(i.remainingAmount)}`)
+              .join('; ');
+
+            return {
+              "No": idx + 1,
+              "Nama Siswa": item.student.name,
+              "Jenis Kelamin": item.student.gender,
+              "Kelas": item.student.class || '1',
+              "Orang Tua / Wali": item.student.parentName || item.student.father || item.student.mother || '',
+              "Total Tagihan (Rp)": item.totalTarget,
+              "Sudah Dibayar (Rp)": item.totalPaid,
+              "Sisa Kekurangan (Rp)": item.remainingTarget,
+              "Status Pelunasan": item.overallStatus,
+              "Item yang Sudah Dibayar (Bayar Apa Saja)": paidItemsList || 'Belum ada pembayaran',
+              "Item Belum Dibayar (Kekurangan)": unpaidItemsList || 'Semua Lunas'
+            };
+          });
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsStudents), "Rekap Rincian Siswa");
+
+          // Sheet 2: Matriks Pos Pembayaran per Kolom
+          const rowsMatrix = studentMatrix.map((item, idx) => {
+            const row = {
+              "No": idx + 1,
+              "Nama Siswa": item.student.name,
+              "L/P": item.student.gender === 'Putri' ? 'P' : 'L',
+              "Orang Tua / Wali": item.student.parentName || item.student.father || item.student.mother || ''
+            };
+
+            pTypes.forEach(pt => {
+              const ib = item.itemBreakdowns.find(b => b.paymentTypeId === pt.id);
+              row[pt.name] = ib ? ib.paidAmount : 0;
+            });
+
+            row["Total Target (Rp)"] = item.totalTarget;
+            row["Sudah Dibayar (Rp)"] = item.totalPaid;
+            row["Sisa Kurang (Rp)"] = item.remainingTarget;
+            row["Status"] = item.overallStatus;
+            return row;
+          });
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsMatrix), "Matriks Pos Pembayaran");
+
+          // Sheet 3: Riwayat Transaksi Kwitansi
           const rowsTx = Store.transactions.map((t, idx) => ({
             "No": idx + 1,
             "No Kwitansi": t.receiptNo,
@@ -4488,7 +4734,7 @@
           }));
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsTx), "Riwayat Transaksi");
 
-          XLSX.writeFile(wb, `Laporan_Pembayaran_Kelas1_${getTodayISO()}.xlsx`);
+          XLSX.writeFile(wb, `Laporan_Pembayaran_Lengkap_Kelas1_${getTodayISO()}.xlsx`);
         }
       };
 
