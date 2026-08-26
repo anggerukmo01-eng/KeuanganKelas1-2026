@@ -1431,8 +1431,7 @@
         `;
       }
 
-
-      function renderHistory() {
+     function renderHistory() {
         return `
           <div class="space-y-6">
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
@@ -1528,29 +1527,158 @@
       }
 
       function renderBilling() {
+        if (!Store.billingFilter) {
+          Store.billingFilter = { status: 'ALL', search: '', sort: 'DEFAULT', gender: 'ALL' };
+        }
+
+        const allLedgers = Store.students
+          .filter(s => s.active)
+          .map(s => Store.getStudentSummary(s));
+
+        // Counts for quick filter pill badges
+        const countAll = allLedgers.length;
+        const countLunas = allLedgers.filter(l => l.overallStatus === 'LUNAS').length;
+        const countSebagian = allLedgers.filter(l => l.overallStatus === 'SEBAGIAN').length;
+        const countBelumBayar = allLedgers.filter(l => l.overallStatus === 'BELUM BAYAR').length;
+
+        // Apply filters
+        let studentLedgers = allLedgers.filter(sum => {
+          if (Store.billingFilter.status !== 'ALL') {
+            if (Store.billingFilter.status === 'LUNAS' && sum.overallStatus !== 'LUNAS') return false;
+            if (Store.billingFilter.status === 'SEBAGIAN' && sum.overallStatus !== 'SEBAGIAN') return false;
+            if (Store.billingFilter.status === 'BELUM BAYAR' && sum.overallStatus !== 'BELUM BAYAR') return false;
+          }
+          if (Store.billingFilter.gender && Store.billingFilter.gender !== 'ALL') {
+            if (sum.student.gender !== Store.billingFilter.gender) return false;
+          }
+          if (Store.billingFilter.search) {
+            const q = Store.billingFilter.search.toLowerCase().trim();
+            const matchName = sum.student.name.toLowerCase().includes(q);
+            const matchNis = sum.student.nis && sum.student.nis.toLowerCase().includes(q);
+            const matchParent = (sum.student.parentName && sum.student.parentName.toLowerCase().includes(q)) ||
+                                (sum.student.father && sum.student.father.toLowerCase().includes(q)) ||
+                                (sum.student.mother && sum.student.mother.toLowerCase().includes(q));
+            const matchAddress = sum.student.address && sum.student.address.toLowerCase().includes(q);
+            if (!matchName && !matchNis && !matchParent && !matchAddress) return false;
+          }
+          return true;
+        });
+
+        // Apply Sorting
+        const sortMode = Store.billingFilter.sort || 'DEFAULT';
+        if (sortMode === 'NAME_ASC') {
+          studentLedgers.sort((a, b) => a.student.name.localeCompare(b.student.name));
+        } else if (sortMode === 'NAME_DESC') {
+          studentLedgers.sort((a, b) => b.student.name.localeCompare(a.student.name));
+        } else if (sortMode === 'REMAINING_DESC') {
+          studentLedgers.sort((a, b) => b.remainingTarget - a.remainingTarget);
+        } else if (sortMode === 'REMAINING_ASC') {
+          studentLedgers.sort((a, b) => a.remainingTarget - b.remainingTarget);
+        } else if (sortMode === 'PAID_DESC') {
+          studentLedgers.sort((a, b) => b.totalPaid - a.totalPaid);
+        } else if (sortMode === 'PAID_ASC') {
+          studentLedgers.sort((a, b) => a.totalPaid - b.totalPaid);
+        }
+
+        let targetSum = 0, paidSum = 0;
+        studentLedgers.forEach(l => {
+          targetSum += l.totalTarget;
+          paidSum += l.totalPaid;
+        });
+        const remainingSum = Math.max(0, targetSum - paidSum);
+
         return `
           <div class="space-y-6">
+            <!-- TOOLBAR FILTER & SEARCH -->
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">Daftar Status Tagihan Siswa</h3>
-                  <p class="text-xs text-slate-500 dark:text-slate-400">Pantau kewajiban dan sisa tagihan per siswa (Termasuk Buku 7 KIH)</p>
+                  <p id="billing_header_sub" class="text-xs text-slate-500 dark:text-slate-400">
+                    Menampilkan <strong>${studentLedgers.length}</strong> dari ${countAll} siswa • Sisa Tagihan Terfilter: <strong>${formatRupiah(remainingSum)}</strong>
+                  </p>
                 </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    onclick="AppActions.navigate('reports')"
+                    class="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold rounded-xl text-xs flex items-center gap-1.5"
+                  >
+                    ${getSvgIcon('reports', 'w-4 h-4')}
+                    <span>Cetak Rekap Laporan</span>
+                  </button>
+                  <button
+                    onclick="AppActions.navigate('payment')"
+                    class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-brand-600/20"
+                  >
+                    ${getSvgIcon('plus', 'w-4 h-4')}
+                    <span>Bayar Tagihan Baru</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- QUICK FILTER PILL BADGES -->
+              <div class="flex flex-wrap items-center gap-2 pt-1">
                 <button
-                  onclick="AppActions.navigate('reports')"
-                  class="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold rounded-xl text-xs flex items-center gap-1.5"
+                  type="button"
+                  onclick="AppActions.setBillingStatusFilter('ALL')"
+                  class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    Store.billingFilter.status === 'ALL'
+                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'
+                  }"
                 >
-                  ${getSvgIcon('reports', 'w-4 h-4')}
-                  <span>Cetak Rekap Laporan</span>
+                  <span>Semua Siswa</span>
+                  <span class="px-1.5 py-0.2 text-[10px] rounded-full ${Store.billingFilter.status === 'ALL' ? 'bg-white/20 dark:bg-slate-900/20 text-current' : 'bg-slate-200 dark:bg-slate-600 text-current'}">${countAll}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onclick="AppActions.setBillingStatusFilter('LUNAS')"
+                  class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    Store.billingFilter.status === 'LUNAS'
+                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
+                      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300'
+                  }"
+                >
+                  <span>✓ LUNAS</span>
+                  <span class="px-1.5 py-0.2 text-[10px] rounded-full ${Store.billingFilter.status === 'LUNAS' ? 'bg-white/20 text-white' : 'bg-emerald-200/60 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-200'}">${countLunas}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onclick="AppActions.setBillingStatusFilter('SEBAGIAN')"
+                  class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    Store.billingFilter.status === 'SEBAGIAN'
+                      ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/20'
+                      : 'bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300'
+                  }"
+                >
+                  <span>⏳ DIBAYAR SEBAGIAN</span>
+                  <span class="px-1.5 py-0.2 text-[10px] rounded-full ${Store.billingFilter.status === 'SEBAGIAN' ? 'bg-white/20 text-white' : 'bg-amber-200/60 dark:bg-amber-800 text-amber-800 dark:text-amber-200'}">${countSebagian}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onclick="AppActions.setBillingStatusFilter('BELUM BAYAR')"
+                  class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    Store.billingFilter.status === 'BELUM BAYAR'
+                      ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/20'
+                      : 'bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300'
+                  }"
+                >
+                  <span>✕ BELUM BAYAR</span>
+                  <span class="px-1.5 py-0.2 text-[10px] rounded-full ${Store.billingFilter.status === 'BELUM BAYAR' ? 'bg-white/20 text-white' : 'bg-rose-200/60 dark:bg-rose-800 text-rose-800 dark:text-rose-200'}">${countBelumBayar}</span>
                 </button>
               </div>
 
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div class="sm:col-span-2 relative">
+              <!-- DETAILED CONTROLS -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <!-- SEARCH -->
+                <div class="relative">
                   <input 
                     type="text"
                     id="billing_search_input"
-                    placeholder="Cari nama siswa, orang tua, atau NIS..."
+                    placeholder="Cari nama siswa, ortu, NIS..."
                     value="${escapeHtml(Store.billingFilter.search)}"
                     oninput="AppActions.onBillingSearchInput(this.value)"
                     class="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 dark:text-white"
@@ -1560,21 +1688,52 @@
                   </div>
                 </div>
 
+                <!-- STATUS DROPDOWN -->
                 <div>
                   <select
                     id="billing_status_filter"
-                    onchange="Store.billingFilter.status = this.value; AppActions.updateBillingTableDOM();"
+                    onchange="AppActions.setBillingStatusFilter(this.value)"
+                    class="w-full p-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl dark:text-white font-semibold"
+                  >
+                    <option value="ALL" ${Store.billingFilter.status === 'ALL' ? 'selected' : ''}>Status: Semua (${countAll})</option>
+                    <option value="LUNAS" ${Store.billingFilter.status === 'LUNAS' ? 'selected' : ''}>Status: LUNAS (${countLunas})</option>
+                    <option value="SEBAGIAN" ${Store.billingFilter.status === 'SEBAGIAN' ? 'selected' : ''}>Status: SEBAGIAN (${countSebagian})</option>
+                    <option value="BELUM BAYAR" ${Store.billingFilter.status === 'BELUM BAYAR' ? 'selected' : ''}>Status: BELUM BAYAR (${countBelumBayar})</option>
+                  </select>
+                </div>
+
+                <!-- SORT DROPDOWN -->
+                <div>
+                  <select
+                    id="billing_sort_filter"
+                    onchange="AppActions.setBillingSortFilter(this.value)"
                     class="w-full p-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl dark:text-white font-medium"
                   >
-                    <option value="ALL" ${Store.billingFilter.status === 'ALL' ? 'selected' : ''}>Semua Status</option>
-                    <option value="LUNAS" ${Store.billingFilter.status === 'LUNAS' ? 'selected' : ''}>LUNAS</option>
-                    <option value="SEBAGIAN" ${Store.billingFilter.status === 'SEBAGIAN' ? 'selected' : ''}>DIBAYAR SEBAGIAN</option>
-                    <option value="BELUM BAYAR" ${Store.billingFilter.status === 'BELUM BAYAR' ? 'selected' : ''}>BELUM BAYAR</option>
+                    <option value="DEFAULT" ${sortMode === 'DEFAULT' ? 'selected' : ''}>Urutkan: Absen / Default</option>
+                    <option value="NAME_ASC" ${sortMode === 'NAME_ASC' ? 'selected' : ''}>Nama Siswa (A - Z)</option>
+                    <option value="NAME_DESC" ${sortMode === 'NAME_DESC' ? 'selected' : ''}>Nama Siswa (Z - A)</option>
+                    <option value="REMAINING_DESC" ${sortMode === 'REMAINING_DESC' ? 'selected' : ''}>Sisa Kurang Terbanyak</option>
+                    <option value="REMAINING_ASC" ${sortMode === 'REMAINING_ASC' ? 'selected' : ''}>Sisa Kurang Paling Sedikit</option>
+                    <option value="PAID_DESC" ${sortMode === 'PAID_DESC' ? 'selected' : ''}>Sudah Bayar Tertinggi</option>
+                  </select>
+                </div>
+
+                <!-- GENDER FILTER -->
+                <div>
+                  <select
+                    id="billing_gender_filter"
+                    onchange="AppActions.setBillingGenderFilter(this.value)"
+                    class="w-full p-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl dark:text-white font-medium"
+                  >
+                    <option value="ALL" ${(!Store.billingFilter.gender || Store.billingFilter.gender === 'ALL') ? 'selected' : ''}>Gender: Semua Siswa</option>
+                    <option value="Putra" ${Store.billingFilter.gender === 'Putra' ? 'selected' : ''}>Khusus Siswa Putra (L)</option>
+                    <option value="Putri" ${Store.billingFilter.gender === 'Putri' ? 'selected' : ''}>Khusus Siswi Putri (P)</option>
                   </select>
                 </div>
               </div>
             </div>
 
+            <!-- TABLE DAFTAR TAGIHAN -->
             <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
               <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs">
@@ -1592,10 +1751,104 @@
                     </tr>
                   </thead>
                   <tbody id="billing_table_tbody" class="divide-y divide-slate-100 dark:divide-slate-700/60">
-                    <!-- Populated dynamically -->
+                    ${studentLedgers.length === 0 ? `
+                      <tr>
+                        <td colSpan="9" class="py-12 text-center text-slate-400">
+                          <div class="max-w-md mx-auto space-y-2">
+                            ${getSvgIcon('alertCircle', 'w-10 h-10 mx-auto text-slate-300 dark:text-slate-600')}
+                            <p class="font-bold text-sm text-slate-600 dark:text-slate-300">
+                              ${Store.billingFilter.status === 'LUNAS' 
+                                ? 'Belum ada siswa dengan status LUNAS' 
+                                : Store.billingFilter.status === 'SEBAGIAN'
+                                ? 'Tidak ada siswa yang sedang mencicil (Sebagian)'
+                                : Store.billingFilter.status === 'BELUM BAYAR'
+                                ? 'Tidak ada siswa dengan status Belum Bayar'
+                                : 'Tidak ada data siswa yang cocok dengan filter pencarian.'}
+                            </p>
+                            <p class="text-xs text-slate-400">
+                              ${Store.billingFilter.status === 'LUNAS' 
+                                ? 'Seluruh siswa saat ini masih memiliki sisa tagihan atau pembayaran sebagian.' 
+                                : 'Coba ubah kata kunci pencarian atau reset filter status ke Semua.'}
+                            </p>
+                            <div class="pt-2">
+                              <button
+                                type="button"
+                                onclick="AppActions.setBillingStatusFilter('ALL')"
+                                class="px-3.5 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300 font-bold rounded-lg text-xs transition-colors"
+                              >
+                                Tampilkan Semua Siswa (${countAll})
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ` : studentLedgers.map((item, idx) => `
+                      <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                        <td class="py-3.5 px-4 text-center font-semibold text-slate-400">${idx + 1}</td>
+                        <td class="py-3.5 px-4">
+                          <button
+                            onclick="AppActions.navigate('student-detail', { studentId: '${item.student.id}' })"
+                            class="font-bold text-slate-800 dark:text-slate-100 hover:text-brand-600 text-left block"
+                          >
+                            ${escapeHtml(item.student.name)}
+                          </button>
+                          ${item.student.nis ? `<span class="block text-[11px] text-slate-400">NIS: ${escapeHtml(item.student.nis)}</span>` : ''}
+                        </td>
+                        <td class="py-3.5 px-4 font-medium text-slate-700 dark:text-slate-300">
+                          ${escapeHtml(item.student.parentName || item.student.father || item.student.mother || '-')}
+                        </td>
+                        <td class="py-3.5 px-4 text-center">
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            item.student.gender === 'Putri' ? 'bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                          }">
+                            ${item.student.gender === 'Putri' ? 'P' : 'L'}
+                          </span>
+                        </td>
+                        <td class="py-3.5 px-4 text-right font-medium text-slate-700 dark:text-slate-300">${formatRupiah(item.totalTarget)}</td>
+                        <td class="py-3.5 px-4 text-right font-semibold text-emerald-600 dark:text-emerald-400">${formatRupiah(item.totalPaid)}</td>
+                        <td class="py-3.5 px-4 text-right font-bold text-rose-600 dark:text-rose-400">${formatRupiah(item.remainingTarget)}</td>
+                        <td class="py-3.5 px-4 text-center">
+                          <span class="px-2.5 py-1 rounded-full text-[11px] font-bold inline-block ${
+                            item.overallStatus === 'LUNAS' 
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                              : item.overallStatus === 'SEBAGIAN'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                          }">
+                            ${item.overallStatus}
+                          </span>
+                        </td>
+                        <td class="py-3.5 px-4 text-center">
+                          <div class="flex items-center justify-center gap-1.5">
+                            <button
+                              onclick="AppActions.navigate('student-detail', { studentId: '${item.student.id}' })"
+                              class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 font-semibold"
+                            >
+                              Rincian
+                            </button>
+                            ${item.remainingTarget > 0 ? `
+                              <button
+                                onclick="AppActions.selectPOSStudent('${item.student.id}')"
+                                class="px-2.5 py-1 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-bold shadow-sm"
+                              >
+                                Bayar
+                              </button>
+                            ` : ''}
+                          </div>
+                        </td>
+                      </tr>
+                    `).join('')}
                   </tbody>
                   <tfoot id="billing_table_tfoot" class="bg-slate-50 dark:bg-slate-700/80 font-bold border-t-2 border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-100">
-                    <!-- Populated dynamically -->
+                    <tr>
+                      <td colSpan="4" class="py-3 px-4 text-right uppercase tracking-wider">Total Terfilter:</td>
+                      <td class="py-3 px-4 text-right text-brand-700 dark:text-brand-300">${formatRupiah(targetSum)}</td>
+                      <td class="py-3 px-4 text-right text-emerald-600 dark:text-emerald-400">${formatRupiah(paidSum)}</td>
+                      <td class="py-3 px-4 text-right text-rose-600 dark:text-rose-400">${formatRupiah(remainingSum)}</td>
+                      <td colSpan="2" class="text-center text-[10px] text-slate-500 font-medium">
+                        ${studentLedgers.length} Siswa Terpilih
+                      </td>
+                    </tr>
                   </tfoot>
                 </table>
               </div>
@@ -1603,7 +1856,6 @@
           </div>
         `;
       }
-
 
       function renderStudentDetail() {
         const student = Store.students.find(s => s.id === Store.selectedStudentId);
@@ -4639,8 +4891,27 @@
           }
         },
 
-        // --- BILLING REAL-TIME SEARCH & TABLE DOM UPDATES ---
+        // --- BILLING ADVANCED FILTERING & SORTING ACTIONS ---
+        setBillingStatusFilter(status) {
+          if (!Store.billingFilter) Store.billingFilter = {};
+          Store.billingFilter.status = status;
+          Store.render();
+        },
+
+        setBillingSortFilter(sort) {
+          if (!Store.billingFilter) Store.billingFilter = {};
+          Store.billingFilter.sort = sort;
+          Store.render();
+        },
+
+        setBillingGenderFilter(gender) {
+          if (!Store.billingFilter) Store.billingFilter = {};
+          Store.billingFilter.gender = gender;
+          Store.render();
+        },
+
         onBillingSearchInput(val) {
+          if (!Store.billingFilter) Store.billingFilter = {};
           Store.billingFilter.search = val;
           this.updateBillingTableDOM();
         },
@@ -4648,19 +4919,53 @@
         updateBillingTableDOM() {
           const tbody = document.getElementById('billing_table_tbody');
           const tfoot = document.getElementById('billing_table_tfoot');
+          const sub = document.getElementById('billing_header_sub');
           if (!tbody) return;
 
-          const studentLedgers = Store.students
+          const allLedgers = Store.students
             .filter(s => s.active)
-            .map(s => Store.getStudentSummary(s))
-            .filter(sum => {
-              if (Store.billingFilter.status !== 'ALL' && sum.overallStatus !== Store.billingFilter.status) return false;
-              if (Store.billingFilter.search) {
-                const q = Store.billingFilter.search.toLowerCase();
-                return sum.student.name.toLowerCase().includes(q) || (sum.student.nis && sum.student.nis.includes(q)) || (sum.student.parentName && sum.student.parentName.toLowerCase().includes(q));
-              }
-              return true;
-            });
+            .map(s => Store.getStudentSummary(s));
+
+          const countAll = allLedgers.length;
+
+          // Apply filters
+          let studentLedgers = allLedgers.filter(sum => {
+            if (Store.billingFilter.status !== 'ALL') {
+              if (Store.billingFilter.status === 'LUNAS' && sum.overallStatus !== 'LUNAS') return false;
+              if (Store.billingFilter.status === 'SEBAGIAN' && sum.overallStatus !== 'SEBAGIAN') return false;
+              if (Store.billingFilter.status === 'BELUM BAYAR' && sum.overallStatus !== 'BELUM BAYAR') return false;
+            }
+            if (Store.billingFilter.gender && Store.billingFilter.gender !== 'ALL') {
+              if (sum.student.gender !== Store.billingFilter.gender) return false;
+            }
+            if (Store.billingFilter.search) {
+              const q = Store.billingFilter.search.toLowerCase().trim();
+              const matchName = sum.student.name.toLowerCase().includes(q);
+              const matchNis = sum.student.nis && sum.student.nis.toLowerCase().includes(q);
+              const matchParent = (sum.student.parentName && sum.student.parentName.toLowerCase().includes(q)) ||
+                                  (sum.student.father && sum.student.father.toLowerCase().includes(q)) ||
+                                  (sum.student.mother && sum.student.mother.toLowerCase().includes(q));
+              const matchAddress = sum.student.address && sum.student.address.toLowerCase().includes(q);
+              if (!matchName && !matchNis && !matchParent && !matchAddress) return false;
+            }
+            return true;
+          });
+
+          // Apply Sorting
+          const sortMode = Store.billingFilter.sort || 'DEFAULT';
+          if (sortMode === 'NAME_ASC') {
+            studentLedgers.sort((a, b) => a.student.name.localeCompare(b.student.name));
+          } else if (sortMode === 'NAME_DESC') {
+            studentLedgers.sort((a, b) => b.student.name.localeCompare(a.student.name));
+          } else if (sortMode === 'REMAINING_DESC') {
+            studentLedgers.sort((a, b) => b.remainingTarget - a.remainingTarget);
+          } else if (sortMode === 'REMAINING_ASC') {
+            studentLedgers.sort((a, b) => a.remainingTarget - b.remainingTarget);
+          } else if (sortMode === 'PAID_DESC') {
+            studentLedgers.sort((a, b) => b.totalPaid - a.totalPaid);
+          } else if (sortMode === 'PAID_ASC') {
+            studentLedgers.sort((a, b) => a.totalPaid - b.totalPaid);
+          }
 
           let targetSum = 0, paidSum = 0;
           studentLedgers.forEach(l => {
@@ -4669,10 +4974,41 @@
           });
           const remainingSum = Math.max(0, targetSum - paidSum);
 
+          if (sub) {
+            sub.innerHTML = `Menampilkan <strong>${studentLedgers.length}</strong> dari ${countAll} siswa • Sisa Tagihan Terfilter: <strong>${formatRupiah(remainingSum)}</strong>`;
+          }
+
           if (studentLedgers.length === 0) {
             tbody.innerHTML = `
               <tr>
-                <td colSpan="9" class="py-12 text-center text-slate-400">Tidak ada siswa yang sesuai filter.</td>
+                <td colSpan="9" class="py-12 text-center text-slate-400">
+                  <div class="max-w-md mx-auto space-y-2">
+                    ${getSvgIcon('alertCircle', 'w-10 h-10 mx-auto text-slate-300 dark:text-slate-600')}
+                    <p class="font-bold text-sm text-slate-600 dark:text-slate-300">
+                      ${Store.billingFilter.status === 'LUNAS' 
+                        ? 'Belum ada siswa dengan status LUNAS' 
+                        : Store.billingFilter.status === 'SEBAGIAN'
+                        ? 'Tidak ada siswa yang sedang mencicil (Sebagian)'
+                        : Store.billingFilter.status === 'BELUM BAYAR'
+                        ? 'Tidak ada siswa dengan status Belum Bayar'
+                        : 'Tidak ada data siswa yang cocok dengan filter pencarian.'}
+                    </p>
+                    <p class="text-xs text-slate-400">
+                      ${Store.billingFilter.status === 'LUNAS' 
+                        ? 'Seluruh siswa saat ini masih memiliki sisa tagihan atau pembayaran sebagian.' 
+                        : 'Coba ubah kata kunci pencarian atau reset filter status ke Semua.'}
+                    </p>
+                    <div class="pt-2">
+                      <button
+                        type="button"
+                        onclick="AppActions.setBillingStatusFilter('ALL')"
+                        class="px-3.5 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300 font-bold rounded-lg text-xs transition-colors"
+                      >
+                        Tampilkan Semua Siswa (${countAll})
+                      </button>
+                    </div>
+                  </div>
+                </td>
               </tr>
             `;
           } else {
@@ -4682,7 +5018,7 @@
                 <td class="py-3.5 px-4">
                   <button
                     onclick="AppActions.navigate('student-detail', { studentId: '${item.student.id}' })"
-                    class="font-bold text-slate-800 dark:text-slate-100 hover:text-brand-600 text-left"
+                    class="font-bold text-slate-800 dark:text-slate-100 hover:text-brand-600 text-left block"
                   >
                     ${escapeHtml(item.student.name)}
                   </button>
@@ -4741,7 +5077,9 @@
                 <td class="py-3 px-4 text-right text-brand-700 dark:text-brand-300">${formatRupiah(targetSum)}</td>
                 <td class="py-3 px-4 text-right text-emerald-600 dark:text-emerald-400">${formatRupiah(paidSum)}</td>
                 <td class="py-3 px-4 text-right text-rose-600 dark:text-rose-400">${formatRupiah(remainingSum)}</td>
-                <td colSpan="2"></td>
+                <td colSpan="2" class="text-center text-[10px] text-slate-500 font-medium">
+                  ${studentLedgers.length} Siswa Terpilih
+                </td>
               </tr>
             `;
           }
@@ -5234,7 +5572,6 @@
           };
           Store.render();
         },
-
         
         // --- UNDUH LAPORAN DALAM FORMAT GAMBAR (PNG / JPG) ---
         downloadElementAsImage(elementId, filename, format = 'png') {
@@ -5279,7 +5616,6 @@
             return;
           }
           const wb = XLSX.utils.book_new();
-
           const depSum = Store.getDepositSummary();
           const studentMatrix = Store.students.filter(s => s.active).map(st => Store.getStudentSummary(st));
           const pTypes = Store.paymentTypes.filter(p => p.active);
