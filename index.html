@@ -253,19 +253,6 @@
         { id: 'pt-9', name: 'Buku 7 KIH', pricePutra: 10000, pricePutri: 10000, applicableGender: 'Semua', period: '1 Kali', notes: 'Buku 7 Kebiasaan Anak Indonesia Hebat (7 KIH)', active: true, isDefault: true }
       ];
 
-      const DEFAULT_SETTINGS = {
-        schoolName: 'SD Negeri 1 Gerduren',
-        schoolAddress: 'Kec. Purwojati, Kab. Banyumas, Jawa Tengah',
-        officerName: 'Zaenul Kirom Anggi Pamukti, S.Pd.SD',
-        className: 'Kelas 1',
-        academicYear: '2026/2027',
-        phone: '0812-3456-7890',
-        receiptPrefix: 'KW',
-        darkMode: false,
-        schoolLogo: null,
-        teacherSignature: null,
-        showTeacherSignature: true
-      };
 
       function getSvgIcon(name, cls = "w-5 h-5") {
         const icons = {
@@ -298,10 +285,27 @@
           signature: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>`,
           userX: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7a4 4 0 11-8 0 4 4 0 018 0zM9 14a6 6 0 00-6 6v1h12v-1a6 6 0 00-6-6zM17 11l4 4m0-4l-4 4" /></svg>`,
           scissors: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879a3 3 0 11-4.242-4.242 3 3 0 014.242 0L12 12zm0 0l-2.879-2.879a3 3 0 10-4.242 4.242 3 3 0 004.242 0L12 12z" /></svg>`,
-          layers: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>`
+          layers: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>`,
+          clipboardCheck: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>`,
+          bank: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" /></svg>`
         };
         return icons[name] || '';
       }
+
+      const DEFAULT_SETTINGS = {
+        schoolName: 'SD Negeri 1 Gerduren',
+        schoolAddress: 'Kec. Purwojati, Kab. Banyumas, Jawa Tengah',
+        officerName: 'Zaenul Kirom Anggi Pamukti, S.Pd.SD',
+        bookTreasurerName: 'Bu Aenal',
+        className: 'Kelas 1',
+        academicYear: '2026/2027',
+        phone: '0812-3456-7890',
+        receiptPrefix: 'KW',
+        darkMode: false,
+        schoolLogo: null,
+        teacherSignature: null,
+        showTeacherSignature: true
+      };
 
       const Store = {
         students: [],
@@ -319,6 +323,8 @@
         multiReceiptDateFilter: 'ALL',
         toasts: [],
         modal: null,
+        depositDate: getTodayISO(),
+        depositNotes: '',
         
         pos: {
           studentId: null,
@@ -513,6 +519,79 @@
           };
         },
 
+        // --- LAPORAN SETORAN KEUANGAN KE BENDAHARA BUKU (BU AENAL) ---
+        getDepositSummary() {
+          const activeStudents = this.students.filter(s => s.active);
+          let totalClassTarget = 0;
+          let totalCashTeacher = 0;      // Pembayaran ke Guru Kelas (status: Sudah Dibayar / normal)
+          let totalDirectTreasurer = 0;  // Pembayaran langsung ke Bendahara Buku (status: Dibayar ke Guru Lain)
+          let totalRemaining = 0;
+          let lunasCount = 0;
+          let belumLunasCount = 0;       // Siswa yang masih punya sisa tunggakan
+
+          const studentDeposits = activeStudents.map(st => {
+            const sum = this.getStudentSummary(st);
+            totalClassTarget += sum.totalTarget;
+            
+            let cashTeacher = 0;
+            let directTreasurer = 0;
+            let teacherItems = [];
+            let treasurerItems = [];
+            let unpaidItems = [];
+
+            sum.itemBreakdowns.forEach(ib => {
+              if (ib.paidAmount > 0) {
+                if (ib.status === 'Dibayar ke Guru Lain') {
+                  directTreasurer += ib.paidAmount;
+                  treasurerItems.push(`${ib.name}: ${formatRupiah(ib.paidAmount)}`);
+                } else {
+                  cashTeacher += ib.paidAmount;
+                  teacherItems.push(`${ib.name}: ${formatRupiah(ib.paidAmount)}`);
+                }
+              }
+              if (ib.remainingAmount > 0) {
+                unpaidItems.push(`${ib.name}: Kurang ${formatRupiah(ib.remainingAmount)}`);
+              }
+            });
+
+            totalCashTeacher += cashTeacher;
+            totalDirectTreasurer += directTreasurer;
+            totalRemaining += sum.remainingTarget;
+
+            if (sum.overallStatus === 'LUNAS') {
+              lunasCount++;
+            } else {
+              belumLunasCount++;
+            }
+
+            return {
+              student: st,
+              totalTarget: sum.totalTarget,
+              cashTeacher,
+              directTreasurer,
+              totalPaid: sum.totalPaid,
+              remainingAmount: sum.remainingTarget,
+              overallStatus: sum.overallStatus,
+              teacherItems,
+              treasurerItems,
+              unpaidItems
+            };
+          });
+
+          return {
+            totalStudents: activeStudents.length,
+            lunasCount,
+            belumLunasCount,
+            totalClassTarget,
+            totalCashTeacher,
+            totalDirectTreasurer,
+            totalPaidAll: totalCashTeacher + totalDirectTreasurer,
+            totalRemaining,
+            progressPercentage: totalClassTarget > 0 ? Math.round(((totalCashTeacher + totalDirectTreasurer) / totalClassTarget) * 100) : 0,
+            studentDeposits
+          };
+        },
+
         getClassStats() {
           const activeStudents = this.students.filter(s => s.active);
           let totalClassTarget = 0;
@@ -593,6 +672,7 @@
         }
       };
 
+
       function renderAppHTML() {
         const stats = Store.getClassStats();
         return `
@@ -616,6 +696,7 @@
         const menuItems = [
           { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
           { id: 'payment', label: 'Pembayaran (Kasir)', icon: 'creditCard', highlight: true },
+          { id: 'deposit', label: 'Setoran ke Bendahara (Bu Aenal)', icon: 'clipboardCheck', highlight: true },
           { id: 'history', label: 'Riwayat Pembayaran', icon: 'history' },
           { id: 'billing', label: 'Daftar Tagihan', icon: 'billing' },
           { id: 'students', label: 'Data Siswa', icon: 'users', count: stats.totalStudents },
@@ -663,13 +744,13 @@
                       isActive 
                         ? 'bg-brand-600 text-white shadow-md shadow-brand-600/25 font-semibold' 
                         : item.highlight
-                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-brand-700 dark:text-brand-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-brand-700 dark:text-brand-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 font-semibold'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60'
                     }"
                   >
                     <div class="flex items-center gap-3">
                       ${getSvgIcon(item.icon, `w-5 h-5 ${isActive ? 'text-white' : item.highlight ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`)}
-                      <span>${item.label}</span>
+                      <span class="truncate">${item.label}</span>
                     </div>
                     ${item.count !== undefined ? `
                       <span class="px-2 py-0.5 text-xs rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}">
@@ -700,6 +781,7 @@
         const titles = {
           dashboard: 'Dashboard Pembayaran',
           payment: 'Kasir Pembayaran Siswa',
+          deposit: 'Laporan Setoran Keuangan ke Bendahara Buku (Bu Aenal)',
           history: 'Riwayat Transaksi',
           billing: 'Daftar Tagihan Siswa',
           students: 'Manajemen Data Siswa',
@@ -748,6 +830,7 @@
         switch (Store.currentTab) {
           case 'dashboard': return renderDashboard(stats);
           case 'payment': return renderPaymentPOS();
+          case 'deposit': return renderDepositReport(stats);
           case 'history': return renderHistory();
           case 'billing': return renderBilling();
           case 'student-detail': return renderStudentDetail();
@@ -762,6 +845,7 @@
 
       function renderDashboard(stats) {
         const recentTxs = [...Store.transactions].sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date)).slice(0, 5);
+        const depSum = Store.getDepositSummary();
 
         return `
           <div class="space-y-6">
@@ -772,9 +856,10 @@
                 </div>
                 <h2 class="text-2xl font-bold">Selamat Datang di Administrasi Kelas 1</h2>
                 <p class="text-emerald-100 text-sm mt-1 max-w-xl">
-                  Kelola pencatatan pembayaran seragam, atribut, LKS, Buku 7 KIH, dan iuran siswa secara otomatis, akurat, dan profesional.
+                  Kelola pencatatan pembayaran seragam, atribut, LKS, Buku 7 KIH, dan setoran ke Bendahara Buku (${escapeHtml(Store.settings.bookTreasurerName || 'Bu Aenal')}) secara transparan.
                 </p>
               </div>
+
               <div class="flex flex-wrap gap-2">
                 <button
                   onclick="AppActions.navigate('payment')"
@@ -784,69 +869,71 @@
                   <span>Transaksi Baru</span>
                 </button>
                 <button
-                  onclick="AppActions.navigate('billing')"
+                  onclick="AppActions.navigate('deposit')"
                   class="px-4 py-2.5 bg-emerald-800/50 hover:bg-emerald-800/80 text-white font-medium rounded-xl transition-all text-sm flex items-center gap-2 border border-white/20"
                 >
-                  ${getSvgIcon('billing', 'w-4 h-4')}
-                  <span>Cek Tagihan</span>
+                  ${getSvgIcon('clipboardCheck', 'w-4 h-4')}
+                  <span>Setoran ke Bu Aenal</span>
                 </button>
               </div>
             </div>
 
+            <!-- STAT CARDS -->
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
               ${renderStatCard('Jumlah Siswa', `${stats.totalStudents} Siswa`, `${stats.lunasCount} Lunas • ${stats.sebagianCount} Sebagian`, 'users', 'emerald')}
-              ${renderStatCard('Total Tagihan Kelas', formatRupiah(stats.totalClassTarget), 'Kewajiban aktif kelas 1', 'billing', 'blue')}
-              ${renderStatCard('Sudah Dibayar', formatRupiah(stats.totalClassPaid), `${stats.progressPercentage}% terkumpul`, 'checkCircle', 'emerald')}
-              ${renderStatCard('Belum Dibayar', formatRupiah(stats.totalClassRemaining), 'Sisa tunggakan kelas', 'alertCircle', 'rose')}
-              ${renderStatCard('Transaksi Hari Ini', `${stats.todayTxCount} Transaksi`, formatDateIndo(getTodayISO()), 'receipt', 'indigo')}
-              ${renderStatCard('Uang Masuk Hari Ini', formatRupiah(stats.todayRevenue), 'Penerimaan hari ini', 'creditCard', 'amber')}
+              ${renderStatCard('Uang di Guru Kelas', formatRupiah(depSum.totalCashTeacher), 'Siap setor ke Bu Aenal', 'creditCard', 'emerald')}
+              ${renderStatCard('Uang di Bu Aenal', formatRupiah(depSum.totalDirectTreasurer), 'Bayar ke Guru Lain', 'bank', 'blue')}
+              ${renderStatCard('Siswa Belum Lunas', `${depSum.belumLunasCount} Siswa`, `Kurang: ${formatRupiah(depSum.totalRemaining)}`, 'alertCircle', 'rose')}
+              ${renderStatCard('Total Terkumpul', formatRupiah(depSum.totalPaidAll), `${depSum.progressPercentage}% kewajiban kelas`, 'checkCircle', 'indigo')}
+              ${renderStatCard('Total Target Kelas', formatRupiah(depSum.totalClassTarget), 'Kewajiban 20 siswa', 'billing', 'amber')}
             </div>
 
+            <!-- CHARTS & RECENT TRANSACTIONS -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between">
                 <div>
-                  <h3 class="font-bold text-slate-800 dark:text-slate-100 text-base mb-1">Progress Pembayaran Kelas</h3>
-                  <p class="text-xs text-slate-500 dark:text-slate-400 mb-6">Status pelunasan dari seluruh ${stats.totalStudents} siswa Kelas 1</p>
+                  <h3 class="font-bold text-slate-800 dark:text-slate-100 text-base mb-1">Status Keuangan & Setoran</h3>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 mb-6">Distribusi uang penerimaan Kelas 1</p>
 
                   <div class="flex items-baseline gap-3 mb-4">
-                    <span class="text-4xl font-extrabold text-brand-600 dark:text-brand-400">${stats.progressPercentage}%</span>
-                    <span class="text-xs text-slate-500 dark:text-slate-400">dari total ${formatRupiah(stats.totalClassTarget)}</span>
+                    <span class="text-4xl font-extrabold text-brand-600 dark:text-brand-400">${depSum.progressPercentage}%</span>
+                    <span class="text-xs text-slate-500 dark:text-slate-400">dari total ${formatRupiah(depSum.totalClassTarget)}</span>
                   </div>
 
                   <div class="h-4 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden flex mb-6">
-                    <div style="width: ${(stats.lunasCount / (stats.totalStudents || 1)) * 100}%" class="bg-emerald-500 h-full"></div>
-                    <div style="width: ${(stats.sebagianCount / (stats.totalStudents || 1)) * 100}%" class="bg-amber-500 h-full"></div>
-                    <div style="width: ${(stats.belumBayarCount / (stats.totalStudents || 1)) * 100}%" class="bg-rose-500 h-full"></div>
+                    <div style="width: ${(depSum.totalCashTeacher / (depSum.totalClassTarget || 1)) * 100}%" class="bg-emerald-500 h-full" title="Uang di Guru Kelas"></div>
+                    <div style="width: ${(depSum.totalDirectTreasurer / (depSum.totalClassTarget || 1)) * 100}%" class="bg-sky-500 h-full" title="Uang di Bendahara Buku"></div>
+                    <div style="width: ${(depSum.totalRemaining / (depSum.totalClassTarget || 1)) * 100}%" class="bg-rose-500 h-full" title="Sisa Belum Bayar"></div>
                   </div>
 
-                  <div class="space-y-3">
-                    <div class="flex items-center justify-between text-sm">
+                  <div class="space-y-3 text-xs">
+                    <div class="flex items-center justify-between">
                       <div class="flex items-center gap-2">
                         <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
-                        <span class="text-slate-600 dark:text-slate-300">Lunas (${stats.lunasCount} Siswa)</span>
+                        <span class="text-slate-600 dark:text-slate-300">Uang di Guru Kelas (Setoran)</span>
                       </div>
-                      <span class="font-semibold text-slate-800 dark:text-slate-200">
-                        ${Math.round((stats.lunasCount / (stats.totalStudents || 1)) * 100)}%
+                      <span class="font-bold text-slate-800 dark:text-slate-200">
+                        ${formatRupiah(depSum.totalCashTeacher)}
                       </span>
                     </div>
 
-                    <div class="flex items-center justify-between text-sm">
+                    <div class="flex items-center justify-between">
                       <div class="flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span>
-                        <span class="text-slate-600 dark:text-slate-300">Sebagian (${stats.sebagianCount} Siswa)</span>
+                        <span class="w-3 h-3 rounded-full bg-sky-500 inline-block"></span>
+                        <span class="text-slate-600 dark:text-slate-300">Uang di Bendahara (${escapeHtml(Store.settings.bookTreasurerName || 'Bu Aenal')})</span>
                       </div>
-                      <span class="font-semibold text-slate-800 dark:text-slate-200">
-                        ${Math.round((stats.sebagianCount / (stats.totalStudents || 1)) * 100)}%
+                      <span class="font-bold text-slate-800 dark:text-slate-200">
+                        ${formatRupiah(depSum.totalDirectTreasurer)}
                       </span>
                     </div>
 
-                    <div class="flex items-center justify-between text-sm">
+                    <div class="flex items-center justify-between">
                       <div class="flex items-center gap-2">
                         <span class="w-3 h-3 rounded-full bg-rose-500 inline-block"></span>
-                        <span class="text-slate-600 dark:text-slate-300">Belum Bayar (${stats.belumBayarCount} Siswa)</span>
+                        <span class="text-slate-600 dark:text-slate-300">Sisa Tunggakan Belum Bayar</span>
                       </div>
-                      <span class="font-semibold text-slate-800 dark:text-slate-200">
-                        ${Math.round((stats.belumBayarCount / (stats.totalStudents || 1)) * 100)}%
+                      <span class="font-bold text-rose-600 dark:text-rose-400">
+                        ${formatRupiah(depSum.totalRemaining)}
                       </span>
                     </div>
                   </div>
@@ -854,11 +941,11 @@
 
                 <div class="pt-6 mt-6 border-t border-slate-100 dark:border-slate-700">
                   <button
-                    onclick="AppActions.navigate('billing')"
-                    class="w-full py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors flex items-center justify-center gap-2"
+                    onclick="AppActions.navigate('deposit')"
+                    class="w-full py-2.5 px-4 rounded-xl bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 text-xs font-bold text-brand-700 dark:text-brand-300 transition-colors flex items-center justify-center gap-2"
                   >
-                    <span>Lihat Detail Tagihan Siswa</span>
-                    ${getSvgIcon('billing', 'w-4 h-4')}
+                    <span>Buka Berita Acara Setoran</span>
+                    ${getSvgIcon('clipboardCheck', 'w-4 h-4')}
                   </button>
                 </div>
               </div>
@@ -938,7 +1025,6 @@
           </div>
         `;
       }
-
       function renderStatCard(title, value, sub, icon, color) {
         const colorMap = {
           emerald: 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50',
@@ -963,6 +1049,8 @@
           </div>
         `;
       }
+
+
 
       function renderPaymentPOS() {
         const student = Store.students.find(s => s.id === Store.pos.studentId);
@@ -1340,6 +1428,7 @@
         `;
       }
 
+
       function renderHistory() {
         return `
           <div class="space-y-6">
@@ -1511,6 +1600,7 @@
           </div>
         `;
       }
+
 
       function renderStudentDetail() {
         const student = Store.students.find(s => s.id === Store.selectedStudentId);
@@ -1887,7 +1977,9 @@
           </div>
         `;
       }
-     function renderReceipt() {
+
+
+      function renderReceipt() {
         if (Store.transactions.length === 0) {
           return `
             <div class="p-12 text-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
@@ -2386,7 +2478,10 @@
             </div>
           </div>
         `;
-      }     function renderReports(stats) {
+      }
+
+
+      function renderReports(stats) {
         const studentMatrix = Store.students.filter(s => s.active).map(st => Store.getStudentSummary(st));
         const reportType = Store.reportState.type || 'PER_STUDENT_DETAILED';
         
@@ -2778,7 +2873,430 @@
             </div>
           </div>
         `;
-      }     function renderSettings() {
+      }
+
+
+      function renderDepositReport(stats) {
+        const depSum = Store.getDepositSummary();
+        const pTypes = Store.paymentTypes.filter(p => p.active);
+        const treasurerName = Store.settings.bookTreasurerName || 'Bu Aenal';
+
+        return `
+          <div class="space-y-6">
+            <!-- TOOLBAR KONTROL SETORAN -->
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4 no-print">
+              <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+                <div>
+                  <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-brand-800 dark:text-brand-300 text-xs font-bold uppercase mb-1">
+                    Pelaporan Keuangan & Setoran
+                  </div>
+                  <h3 class="font-extrabold text-slate-900 dark:text-slate-100 text-xl">
+                    Pelaporan Setoran Keuangan Guru Kelas ke Bendahara Buku (${escapeHtml(treasurerName)})
+                  </h3>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Rekapitulasi resmi uang fisik yang dipegang Guru Kelas 1 untuk disetorkan, uang yang langsung di Bendahara Buku, dan sisa tunggakan siswa.
+                  </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    onclick="AppActions.exportExcel()"
+                    class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
+                  >
+                    ${getSvgIcon('fileSpreadsheet', 'w-4 h-4')}
+                    <span>Export Excel (.xlsx)</span>
+                  </button>
+                  <button
+                    onclick="window.print()"
+                    class="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-brand-600/20"
+                  >
+                    ${getSvgIcon('printer', 'w-4 h-4')}
+                    <span>Cetak Berita Acara Setoran (Print)</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- FORM ATUR TANGGAL & NAMA BENDAHARA BUKU -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-slate-50 dark:bg-slate-700/30 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                <div>
+                  <label class="text-slate-500 dark:text-slate-400 block mb-1 font-semibold">Nama Bendahara Buku:</label>
+                  <input 
+                    type="text" 
+                    id="dep_treasurer_name_input"
+                    value="${escapeHtml(treasurerName)}" 
+                    oninput="Store.settings.bookTreasurerName = this.value; Store.save();"
+                    class="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-bold text-brand-700 dark:text-brand-300" 
+                  />
+                </div>
+                <div>
+                  <label class="text-slate-500 dark:text-slate-400 block mb-1 font-semibold">Tanggal Berita Acara Setoran:</label>
+                  <input 
+                    type="date" 
+                    id="dep_date_input"
+                    value="${Store.depositDate || getTodayISO()}" 
+                    oninput="Store.depositDate = this.value; Store.render();"
+                    class="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-semibold text-slate-800 dark:text-slate-100" 
+                  />
+                </div>
+                <div>
+                  <label class="text-slate-500 dark:text-slate-400 block mb-1 font-semibold">Catatan Tambahan Setoran:</label>
+                  <input 
+                    type="text" 
+                    placeholder="Contoh: Setoran Tahap 1 Seragam & LKS..." 
+                    value="${escapeHtml(Store.depositNotes || '')}" 
+                    oninput="Store.depositNotes = this.value;"
+                    class="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100" 
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- KARTU 4 METRIK UTAMA SESUAI PERMINTAAN USER -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 no-print">
+              <!-- 1. JUMLAH UANG DI GURU KELAS -->
+              <div class="bg-gradient-to-br from-emerald-500 to-emerald-700 text-white rounded-2xl p-5 shadow-lg shadow-emerald-600/15 flex flex-col justify-between space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold uppercase tracking-wider text-emerald-100">Uang di Guru Kelas</span>
+                  <div class="p-2 rounded-xl bg-white/20">
+                    ${getSvgIcon('creditCard', 'w-5 h-5 text-white')}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-2xl font-black">${formatRupiah(depSum.totalCashTeacher)}</div>
+                  <p class="text-[11px] text-emerald-100 mt-1">
+                    Uang fisik di Guru Kelas 1 untuk disetorkan (Status <em>"Sudah Dibayar"</em>)
+                  </p>
+                </div>
+              </div>
+
+              <!-- 2. JUMLAH UANG DI BENDAHARA BUKU -->
+              <div class="bg-gradient-to-br from-sky-500 to-sky-700 text-white rounded-2xl p-5 shadow-lg shadow-sky-600/15 flex flex-col justify-between space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold uppercase tracking-wider text-sky-100">Uang di Bendahara Buku</span>
+                  <div class="p-2 rounded-xl bg-white/20">
+                    ${getSvgIcon('bank', 'w-5 h-5 text-white')}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-2xl font-black">${formatRupiah(depSum.totalDirectTreasurer)}</div>
+                  <p class="text-[11px] text-sky-100 mt-1">
+                    Telah diterima langsung oleh ${escapeHtml(treasurerName)} (Status <em>"Dibayar ke Guru Lain"</em>)
+                  </p>
+                </div>
+              </div>
+
+              <!-- 3. JUMLAH TOTAL SISWA BELUM BAYAR -->
+              <div class="bg-gradient-to-br from-rose-500 to-rose-700 text-white rounded-2xl p-5 shadow-lg shadow-rose-600/15 flex flex-col justify-between space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold uppercase tracking-wider text-rose-100">Siswa Belum Lunas</span>
+                  <div class="p-2 rounded-xl bg-white/20">
+                    ${getSvgIcon('alertCircle', 'w-5 h-5 text-white')}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-2xl font-black">${depSum.belumLunasCount} Siswa</div>
+                  <p class="text-[11px] text-rose-100 mt-1">
+                    Sisa kekurangan tunggakan: <strong>${formatRupiah(depSum.totalRemaining)}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <!-- 4. JUMLAH TOTAL KESELURUHAN SISWA -->
+              <div class="bg-gradient-to-br from-slate-700 to-slate-900 text-white rounded-2xl p-5 shadow-lg shadow-slate-800/15 flex flex-col justify-between space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Total Keseluruhan Siswa</span>
+                  <div class="p-2 rounded-xl bg-white/20">
+                    ${getSvgIcon('users', 'w-5 h-5 text-white')}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-2xl font-black">${depSum.totalStudents} Siswa</div>
+                  <p class="text-[11px] text-slate-300 mt-1">
+                    Total Target Kelas: <strong>${formatRupiah(depSum.totalClassTarget)}</strong> (${depSum.progressPercentage}% Lunas)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- LEMBAR BERITA ACARA RESMI CETAK (PRINTABLE SHEET) -->
+            <div class="bg-white text-slate-900 rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm print-shadow-none print-full-width">
+              <!-- KOP RESMI SEKOLAH DENGAN LOGO SD -->
+              <div class="border-b-2 border-slate-900 pb-4 mb-6 text-center">
+                <div class="flex items-center justify-center gap-4 mb-2">
+                  <div class="w-14 h-14 flex items-center justify-center flex-shrink-0">
+                    ${Store.settings.schoolLogo ? `
+                      <img src="${Store.settings.schoolLogo}" alt="Logo SD" class="w-14 h-14 object-contain" />
+                    ` : `
+                      ${getSchoolLogoSvg('w-14 h-14')}
+                    `}
+                  </div>
+                  <div>
+                    <h2 class="text-base sm:text-lg font-black uppercase text-slate-900">${escapeHtml(Store.settings.schoolName || 'SD NEGERI 1 GERDUREN')}</h2>
+                    <p class="text-xs text-slate-600">${escapeHtml(Store.settings.schoolAddress || 'Kec. Purwojati, Kab. Banyumas, Jawa Tengah')}</p>
+                  </div>
+                </div>
+                <h3 class="text-sm sm:text-base font-black uppercase mt-2 tracking-wider underline decoration-2 underline-offset-4 text-slate-900">
+                  BERITA ACARA & LAPORAN SETORAN KEUANGAN KELAS 1<br />KEPADA BENDAHARA BUKU (${escapeHtml(treasurerName).toUpperCase()})
+                </h3>
+                <p class="text-[11px] text-slate-500 mt-1">
+                  Tahun Pelajaran ${escapeHtml(Store.settings.academicYear)} • Tanggal Setoran: ${formatDateIndo(Store.depositDate || getTodayISO())}
+                </p>
+              </div>
+
+              <!-- NASKAH PERNYATAAN SERAH TERIMA -->
+              <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs mb-6 space-y-2 leading-relaxed">
+                <p>
+                  Pada hari ini, <strong>${formatDateIndo(Store.depositDate || getTodayISO())}</strong>, telah dilakukan serah terima dan pelaporan rincian setoran keuangan pembayaran siswa Kelas 1 SD Negeri 1 Gerduren Tahun Pelajaran ${escapeHtml(Store.settings.academicYear)} dari:
+                </p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-3 py-1 font-medium">
+                  <div>• <strong>Pihak Yang Menyerahkan:</strong> ${escapeHtml(Store.settings.officerName || 'Zaenul Kirom Anggi Pamukti, S.Pd.SD')} (Guru Kelas 1)</div>
+                  <div>• <strong>Pihak Yang Menerima:</strong> ${escapeHtml(treasurerName)} (Bendahara Buku)</div>
+                </div>
+                <p>
+                  Dengan rincian rekapitulasi keuangan sebagai berikut:
+                </p>
+              </div>
+
+              <!-- REKAPITULASI POSISI KEUANGAN -->
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs mb-6">
+                <div class="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                  <span class="text-slate-500 block">1. Uang di Guru Kelas (Disetorkan):</span>
+                  <span class="text-base font-black text-emerald-800">${formatRupiah(depSum.totalCashTeacher)}</span>
+                  <span class="text-[10px] text-emerald-700 block mt-0.5">Status: Sudah Dibayar</span>
+                </div>
+                <div class="p-3 bg-sky-50 rounded-xl border border-sky-200">
+                  <span class="text-slate-500 block">2. Uang di Bendahara Buku:</span>
+                  <span class="text-base font-black text-sky-800">${formatRupiah(depSum.totalDirectTreasurer)}</span>
+                  <span class="text-[10px] text-sky-700 block mt-0.5">Status: Dibayar ke Guru Lain</span>
+                </div>
+                <div class="p-3 bg-rose-50 rounded-xl border border-rose-200">
+                  <span class="text-slate-500 block">3. Total Sisa Belum Bayar:</span>
+                  <span class="text-base font-black text-rose-800">${formatRupiah(depSum.totalRemaining)}</span>
+                  <span class="text-[10px] text-rose-700 block mt-0.5">${depSum.belumLunasCount} Siswa Belum Lunas</span>
+                </div>
+                <div class="p-3 bg-slate-100 rounded-xl border border-slate-300">
+                  <span class="text-slate-500 block">4. Total Kewajiban Kelas:</span>
+                  <span class="text-base font-black text-slate-900">${formatRupiah(depSum.totalClassTarget)}</span>
+                  <span class="text-[10px] text-slate-600 block mt-0.5">${depSum.totalStudents} Siswa (Terkumpul: ${formatRupiah(depSum.totalPaidAll)})</span>
+                </div>
+              </div>
+
+              <!-- TABEL 1: RINCIAN SETORAN PER SISWA -->
+              <div class="mb-6 space-y-2">
+                <h4 class="font-bold text-xs uppercase tracking-wider text-slate-800">
+                  A. Tabel Rincian Setoran Pembayaran Individual Siswa (${depSum.totalStudents} Siswa)
+                </h4>
+                <div class="border border-slate-300 rounded-xl overflow-hidden shadow-sm">
+                  <table class="w-full text-xs text-left">
+                    <thead class="bg-slate-100 font-bold border-b border-slate-300 text-slate-700 uppercase">
+                      <tr>
+                        <th class="py-2.5 px-2 text-center w-8">No</th>
+                        <th class="py-2.5 px-3 w-40">Nama Siswa & Ortu</th>
+                        <th class="py-2.5 px-2 text-center w-8">L/P</th>
+                        <th class="py-2.5 px-2 text-right w-24">Target Biaya</th>
+                        <th class="py-2.5 px-2 text-right w-28 bg-emerald-50/70 text-emerald-900">Uang di Guru Kelas (Disetorkan)</th>
+                        <th class="py-2.5 px-2 text-right w-28 bg-sky-50/70 text-sky-900">Uang di Bendahara (${escapeHtml(treasurerName)})</th>
+                        <th class="py-2.5 px-2 text-right w-24 bg-rose-50/70 text-rose-900">Sisa Kurang</th>
+                        <th class="py-2.5 px-2 text-center w-20">Status</th>
+                        <th class="py-2.5 px-3">Rincian Pembayaran</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200">
+                      ${depSum.studentDeposits.map((item, idx) => `
+                        <tr class="hover:bg-slate-50">
+                          <td class="py-2.5 px-2 text-center font-medium text-slate-500">${idx + 1}</td>
+                          <td class="py-2.5 px-3">
+                            <div class="font-bold text-slate-900">${escapeHtml(item.student.name)}</div>
+                            <div class="text-[10px] text-slate-500">Ortu: ${escapeHtml(item.student.parentName || item.student.father || item.student.mother || '-')}</div>
+                          </td>
+                          <td class="py-2.5 px-2 text-center font-bold ${item.student.gender === 'Putri' ? 'text-pink-600' : 'text-blue-600'}">
+                            ${item.student.gender === 'Putri' ? 'P' : 'L'}
+                          </td>
+                          <td class="py-2.5 px-2 text-right font-medium text-slate-700">${formatRupiah(item.totalTarget)}</td>
+                          <td class="py-2.5 px-2 text-right font-bold text-emerald-700 bg-emerald-50/30">${formatRupiah(item.cashTeacher)}</td>
+                          <td class="py-2.5 px-2 text-right font-bold text-sky-700 bg-sky-50/30">${formatRupiah(item.directTreasurer)}</td>
+                          <td class="py-2.5 px-2 text-right font-bold ${item.remainingAmount > 0 ? 'text-rose-700 bg-rose-50/30' : 'text-slate-400'}">
+                            ${item.remainingAmount > 0 ? formatRupiah(item.remainingAmount) : 'Rp 0'}
+                          </td>
+                          <td class="py-2.5 px-2 text-center">
+                            <span class="px-1.5 py-0.5 rounded text-[9.5px] font-bold inline-block ${
+                              item.overallStatus === 'LUNAS' 
+                                ? 'bg-emerald-100 text-emerald-800' 
+                                : item.overallStatus === 'SEBAGIAN' 
+                                ? 'bg-amber-100 text-amber-800' 
+                                : 'bg-rose-100 text-rose-800'
+                            }">
+                              ${item.overallStatus}
+                            </span>
+                          </td>
+                          <td class="py-2.5 px-3 text-[10px] text-slate-600">
+                            ${item.teacherItems.length > 0 ? `<div><span class="font-semibold text-emerald-700">Setor:</span> ${item.teacherItems.join(', ')}</div>` : ''}
+                            ${item.treasurerItems.length > 0 ? `<div><span class="font-semibold text-sky-700">Di Bu Aenal:</span> ${item.treasurerItems.join(', ')}</div>` : ''}
+                            ${item.unpaidItems.length > 0 ? `<div><span class="font-semibold text-rose-600">Tunggakan:</span> ${item.unpaidItems.join(', ')}</div>` : ''}
+                            ${item.totalPaid === 0 ? `<span class="italic text-slate-400">Belum ada pembayaran</span>` : ''}
+                          </td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                    <tfoot class="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900">
+                      <tr>
+                        <td colSpan="3" class="py-3 px-3 text-right uppercase">TOTAL SETORAN KELAS 1:</td>
+                        <td class="py-3 px-2 text-right">${formatRupiah(depSum.totalClassTarget)}</td>
+                        <td class="py-3 px-2 text-right text-emerald-800 bg-emerald-100/60">${formatRupiah(depSum.totalCashTeacher)}</td>
+                        <td class="py-3 px-2 text-right text-sky-800 bg-sky-100/60">${formatRupiah(depSum.totalDirectTreasurer)}</td>
+                        <td class="py-3 px-2 text-right text-rose-800 bg-rose-100/60">${formatRupiah(depSum.totalRemaining)}</td>
+                        <td class="py-3 px-2 text-center text-[10px]">${depSum.lunasCount} Lunas / ${depSum.totalStudents} Siswa</td>
+                        <td class="py-3 px-3 text-slate-600 font-normal">
+                          Diserahkan tunai ke Bendahara: <strong>${formatRupiah(depSum.totalCashTeacher)}</strong>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              <!-- TABEL 2: REKAPITULASI PER POS PEMBAYARAN -->
+              <div class="mb-6 space-y-2">
+                <h4 class="font-bold text-xs uppercase tracking-wider text-slate-800">
+                  B. Rekapitulasi Pembagian Uang Per Jenis Pos Tagihan
+                </h4>
+                <div class="border border-slate-300 rounded-xl overflow-hidden shadow-sm">
+                  <table class="w-full text-xs text-left">
+                    <thead class="bg-slate-100 font-bold border-b border-slate-300 text-slate-700 uppercase">
+                      <tr>
+                        <th class="py-2.5 px-3 w-8 text-center">No</th>
+                        <th class="py-2.5 px-4">Nama Pos Pembayaran</th>
+                        <th class="py-2.5 px-4 text-right">Target Biaya Kelas</th>
+                        <th class="py-2.5 px-4 text-right text-emerald-800">Uang di Guru Kelas (Disetorkan)</th>
+                        <th class="py-2.5 px-4 text-right text-sky-800">Uang di Bendahara (${escapeHtml(treasurerName)})</th>
+                        <th class="py-2.5 px-4 text-right text-rose-800">Sisa Tunggakan</th>
+                        <th class="py-2.5 px-4 text-center">Status Pelunasan</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200">
+                      ${pTypes.map((pt, idx) => {
+                        let ptTarget = 0;
+                        let ptCashTeacher = 0;
+                        let ptDirectTreasurer = 0;
+                        let ptRemaining = 0;
+
+                        Store.students.filter(s => s.active).forEach(st => {
+                          const isPutri = st.gender === 'Putri';
+                          const price = isPutri ? pt.pricePutri : pt.pricePutra;
+                          if (pt.applicableGender === 'Semua' || (pt.applicableGender === 'Putra' && !isPutri) || (pt.applicableGender === 'Putri' && isPutri)) {
+                            ptTarget += price;
+                            const sum = Store.getStudentSummary(st);
+                            const ib = sum.itemBreakdowns.find(b => b.paymentTypeId === pt.id);
+                            if (ib) {
+                              if (ib.status === 'Dibayar ke Guru Lain') {
+                                ptDirectTreasurer += ib.paidAmount;
+                              } else {
+                                ptCashTeacher += ib.paidAmount;
+                              }
+                              ptRemaining += ib.remainingAmount;
+                            } else {
+                              ptRemaining += price;
+                            }
+                          }
+                        });
+
+                        const totalPaidPt = ptCashTeacher + ptDirectTreasurer;
+                        const ptStatus = ptRemaining === 0 ? 'LUNAS' : totalPaidPt > 0 ? 'SEBAGIAN' : 'BELUM BAYAR';
+
+                        return `
+                          <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-3 text-center text-slate-500 font-medium">${idx + 1}</td>
+                            <td class="py-2.5 px-4 font-bold text-slate-800">${escapeHtml(pt.name)}</td>
+                            <td class="py-2.5 px-4 text-right font-medium text-slate-700">${formatRupiah(ptTarget)}</td>
+                            <td class="py-2.5 px-4 text-right font-bold text-emerald-700">${formatRupiah(ptCashTeacher)}</td>
+                            <td class="py-2.5 px-4 text-right font-bold text-sky-700">${formatRupiah(ptDirectTreasurer)}</td>
+                            <td class="py-2.5 px-4 text-right font-bold ${ptRemaining > 0 ? 'text-rose-600' : 'text-slate-400'}">
+                              ${ptRemaining > 0 ? formatRupiah(ptRemaining) : 'Rp 0'}
+                            </td>
+                            <td class="py-2.5 px-4 text-center">
+                              <span class="px-2 py-0.5 rounded text-[9.5px] font-bold ${
+                                ptStatus === 'LUNAS' ? 'bg-emerald-100 text-emerald-800' :
+                                ptStatus === 'SEBAGIAN' ? 'bg-amber-100 text-amber-800' :
+                                'bg-rose-100 text-rose-800'
+                              }">
+                                ${ptStatus}
+                              </span>
+                            </td>
+                          </tr>
+                        `;
+                      }).join('')}
+                    </tbody>
+                    <tfoot class="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900">
+                      <tr>
+                        <td colSpan="2" class="py-3 px-4 text-right uppercase">TOTAL KESELURUHAN:</td>
+                        <td class="py-3 px-4 text-right text-slate-900">${formatRupiah(depSum.totalClassTarget)}</td>
+                        <td class="py-3 px-4 text-right text-emerald-800">${formatRupiah(depSum.totalCashTeacher)}</td>
+                        <td class="py-3 px-4 text-right text-sky-800">${formatRupiah(depSum.totalDirectTreasurer)}</td>
+                        <td class="py-3 px-4 text-right text-rose-800">${formatRupiah(depSum.totalRemaining)}</td>
+                        <td class="py-3 px-4 text-center text-[10px]">Total Terkumpul: ${formatRupiah(depSum.totalPaidAll)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              <!-- TANDA TANGAN SERAH TERIMA 3 PIHAK -->
+              <div class="mt-10 pt-6 border-t border-slate-300 break-inside-avoid">
+                <div class="grid grid-cols-2 gap-8 text-center text-xs">
+                  <!-- PIHAK YANG MENYERAHKAN (GURU KELAS 1) -->
+                  <div class="flex flex-col justify-between h-40">
+                    <div>
+                      <p class="text-slate-500 mb-1">Yang Menyerahkan,</p>
+                      <p class="font-bold text-slate-900">Guru Kelas 1</p>
+                    </div>
+                    <div class="h-16 flex items-center justify-center my-1">
+                      ${Store.settings.teacherSignature && Store.settings.showTeacherSignature ? `
+                        <img src="${Store.settings.teacherSignature}" alt="TTD Guru" class="max-h-16 max-w-[150px] object-contain mx-auto" />
+                      ` : '<div class="h-14"></div>'}
+                    </div>
+                    <div>
+                      <p class="font-bold text-slate-900 border-t border-slate-400 inline-block px-6 pt-1">
+                        ${escapeHtml(Store.settings.officerName || 'Zaenul Kirom Anggi Pamukti, S.Pd.SD')}
+                      </p>
+                      <span class="block text-[10px] text-slate-500">NIP. .................................................</span>
+                    </div>
+                  </div>
+
+                  <!-- PIHAK YANG MENERIMA (BENDAHARA BUKU) -->
+                  <div class="flex flex-col justify-between h-40">
+                    <div>
+                      <p class="text-slate-500 mb-1">Yang Menerima,</p>
+                      <p class="font-bold text-slate-900">Bendahara Buku</p>
+                    </div>
+                    <div class="h-16 flex items-center justify-center my-1">
+                      <div class="h-14"></div>
+                    </div>
+                    <div>
+                      <p class="font-bold text-slate-900 border-t border-slate-400 inline-block px-6 pt-1">
+                        ( ${escapeHtml(treasurerName)} )
+                      </p>
+                      <span class="block text-[10px] text-slate-500">NIP. .................................................</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- MENGETAHUI KEPALA SEKOLAH -->
+                <div class="text-center text-xs mt-8">
+                  <p class="text-slate-500 mb-1">Mengetahui,</p>
+                  <p class="font-bold text-slate-900 mb-14">Kepala Sekolah SD Negeri 1 Gerduren</p>
+                  <p class="font-bold text-slate-900 border-t border-slate-400 inline-block px-10 pt-1">
+                    ( .................................................. )
+                  </p>
+                  <span class="block text-[10px] text-slate-500">NIP. .................................................</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+
+      function renderSettings() {
         return `
           <div class="max-w-4xl mx-auto space-y-6">
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
@@ -3421,6 +3939,8 @@
           </div>
         `;
       }
+
+
       window.AppActions = {
         navigate(tab, extra) {
           Store.navigate(tab, extra);
@@ -4340,6 +4860,7 @@
           Store.showToast(`Transaksi ${tx.receiptNo} berhasil diperbarui.`);
           if (Store.currentTab === 'history') window.AppActions.updateHistoryTableDOM();
           if (Store.currentTab === 'receipt') Store.render();
+          if (Store.currentTab === 'deposit') Store.render();
         },
 
         deleteTransaction(id) {
@@ -4361,6 +4882,7 @@
               Store.showToast(`Transaksi ${tx.receiptNo} telah dihapus.`, 'warning');
               Store.render();
               if (Store.currentTab === 'history') window.AppActions.updateHistoryTableDOM();
+              if (Store.currentTab === 'deposit') Store.render();
             }
           };
           Store.render();
@@ -4556,6 +5078,7 @@
           Store.settings.schoolName = document.getElementById('set_schoolName').value;
           Store.settings.schoolAddress = document.getElementById('set_schoolAddress').value;
           Store.settings.officerName = document.getElementById('set_officerName').value;
+          Store.settings.bookTreasurerName = document.getElementById('set_bookTreasurerName') ? document.getElementById('set_bookTreasurerName').value : Store.settings.bookTreasurerName;
           Store.settings.className = document.getElementById('set_className').value;
           Store.settings.academicYear = document.getElementById('set_academicYear').value;
           Store.settings.phone = document.getElementById('set_phone').value;
@@ -4666,10 +5189,29 @@
           }
           const wb = XLSX.utils.book_new();
 
+          const depSum = Store.getDepositSummary();
           const studentMatrix = Store.students.filter(s => s.active).map(st => Store.getStudentSummary(st));
           const pTypes = Store.paymentTypes.filter(p => p.active);
 
-          // Sheet 1: Rekap Rincian Lengkap Siswa
+          // Sheet 1: Berita Acara Setoran ke Bendahara Buku (Bu Aenal)
+          const rowsDeposit = depSum.studentDeposits.map((item, idx) => ({
+            "No": idx + 1,
+            "Nama Siswa": item.student.name,
+            "L/P": item.student.gender === 'Putri' ? 'P' : 'L',
+            "Orang Tua / Wali": item.student.parentName || item.student.father || item.student.mother || '',
+            "Total Target Biaya (Rp)": item.totalTarget,
+            "Uang di Guru Kelas (Disetorkan Rp)": item.cashTeacher,
+            "Uang di Bendahara Buku (Bu Aenal Rp)": item.directTreasurer,
+            "Total Terbayar (Rp)": item.totalPaid,
+            "Sisa Kekurangan (Rp)": item.remainingAmount,
+            "Status Pelunasan": item.overallStatus,
+            "Rincian Setoran Guru Kelas": item.teacherItems.join('; ') || '-',
+            "Rincian di Bendahara Buku": item.treasurerItems.join('; ') || '-',
+            "Rincian Tunggakan": item.unpaidItems.join('; ') || 'Lunas'
+          }));
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsDeposit), "Setoran Bendahara Buku");
+
+          // Sheet 2: Rekap Rincian Lengkap Siswa
           const rowsStudents = studentMatrix.map((item, idx) => {
             const paidItemsList = item.itemBreakdowns
               .filter(i => i.paidAmount > 0)
@@ -4697,7 +5239,7 @@
           });
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsStudents), "Rekap Rincian Siswa");
 
-          // Sheet 2: Matriks Pos Pembayaran per Kolom
+          // Sheet 3: Matriks Pos Pembayaran per Kolom
           const rowsMatrix = studentMatrix.map((item, idx) => {
             const row = {
               "No": idx + 1,
@@ -4719,7 +5261,7 @@
           });
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsMatrix), "Matriks Pos Pembayaran");
 
-          // Sheet 3: Riwayat Transaksi Kwitansi
+          // Sheet 4: Riwayat Transaksi Kwitansi
           const rowsTx = Store.transactions.map((t, idx) => ({
             "No": idx + 1,
             "No Kwitansi": t.receiptNo,
@@ -4734,7 +5276,7 @@
           }));
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsTx), "Riwayat Transaksi");
 
-          XLSX.writeFile(wb, `Laporan_Pembayaran_Lengkap_Kelas1_${getTodayISO()}.xlsx`);
+          XLSX.writeFile(wb, `Laporan_Setoran_Keuangan_Kelas1_${getTodayISO()}.xlsx`);
         }
       };
 
