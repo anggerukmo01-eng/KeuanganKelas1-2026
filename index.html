@@ -162,6 +162,53 @@
           .replace(/'/g, '&#039;');
       }
 
+      function getSchoolLogoSvg(cls = "w-14 h-14") {
+        return `<svg class="${cls}" viewBox="0 0 200 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M100 8 C140 8 185 25 192 70 C192 140 145 195 100 215 C55 195 8 140 8 70 C15 25 60 8 100 8 Z" fill="#00b4d8" stroke="#0077b6" stroke-width="4"/>
+          <path d="M100 13 C138 13 180 28 186 70 C186 135 142 188 100 208 C58 188 14 135 14 70 C20 28 62 13 100 13 Z" fill="#00c8e8" stroke="#ffffff" stroke-width="1.5"/>
+          <path id="logoArcText" d="M30 68 Q100 35 170 68" fill="none"/>
+          <text font-family="'Plus Jakarta Sans', sans-serif" font-size="11.5" font-weight="900" fill="#1e293b" letter-spacing="1">
+            <textPath href="#logoArcText" startOffset="50%" text-anchor="middle">SD NEGERI 1 GERDUREN</textPath>
+          </text>
+          <path d="M40 115 Q100 55 160 115 L170 125 L30 125 Z" fill="#334155"/>
+          <path d="M100 62 L90 85 L96 82 L100 88 L104 82 L110 85 Z" fill="#ffffff"/>
+          <path d="M100 150 C80 120 50 125 45 155 C70 145 90 148 100 155 Z" fill="#ef4444"/>
+          <path d="M100 147 C80 117 53 122 48 149 C70 140 90 143 100 147 Z" fill="#eab308"/>
+          <path d="M100 143 C80 113 56 118 52 143 C70 135 90 138 100 143 Z" fill="#22c55e"/>
+          <path d="M100 150 C120 120 150 125 155 155 C130 145 110 148 100 155 Z" fill="#ef4444"/>
+          <path d="M100 147 C120 117 147 122 152 149 C130 140 110 143 100 147 Z" fill="#eab308"/>
+          <path d="M100 143 C120 113 144 118 148 143 C130 135 110 138 100 143 Z" fill="#22c55e"/>
+          <path d="M96 90 C96 82 104 82 104 90 L103 145 L97 145 Z" fill="#eab308" stroke="#1e293b" stroke-width="1"/>
+          <circle cx="100" cy="98" r="4" fill="#eab308" stroke="#1e293b" stroke-width="1"/>
+          <circle cx="100" cy="108" r="4" fill="#eab308" stroke="#1e293b" stroke-width="1"/>
+          <circle cx="100" cy="118" r="4" fill="#eab308" stroke="#1e293b" stroke-width="1"/>
+          <circle cx="100" cy="128" r="4" fill="#eab308" stroke="#1e293b" stroke-width="1"/>
+          <path d="M96 150 C96 170 104 170 104 150 Z" fill="#eab308" stroke="#1e293b" stroke-width="1"/>
+          <g fill="#eab308" stroke="#ca8a04" stroke-width="0.5">
+            <ellipse cx="28" cy="120" rx="3.5" ry="6" transform="rotate(-30 28 120)"/>
+            <ellipse cx="26" cy="132" rx="3.5" ry="6" transform="rotate(-20 26 132)"/>
+            <ellipse cx="28" cy="144" rx="3.5" ry="6" transform="rotate(-10 28 144)"/>
+            <ellipse cx="33" cy="156" rx="3.5" ry="6" transform="rotate(10 33 156)"/>
+            <ellipse cx="42" cy="168" rx="3.5" ry="6" transform="rotate(30 42 168)"/>
+            <ellipse cx="54" cy="178" rx="3.5" ry="6" transform="rotate(50 54 178)"/>
+            <ellipse cx="68" cy="186" rx="3.5" ry="6" transform="rotate(70 68 186)"/>
+            <ellipse cx="83" cy="189" rx="3.5" ry="6" transform="rotate(85 83 189)"/>
+          </g>
+          <g fill="#ffffff" stroke="#94a3b8" stroke-width="0.8">
+            <circle cx="172" cy="120" r="4.5"/>
+            <circle cx="174" cy="132" r="4.5"/>
+            <circle cx="172" cy="144" r="4.5"/>
+            <circle cx="167" cy="156" r="4.5"/>
+            <circle cx="158" cy="168" r="4.5"/>
+            <circle cx="146" cy="178" r="4.5"/>
+            <circle cx="132" cy="186" r="4.5"/>
+            <circle cx="117" cy="189" r="4.5"/>
+          </g>
+          <path d="M90 185 L110 185 L106 195 L94 195 Z" fill="#b45309"/>
+          <rect x="92" y="195" width="16" height="4" fill="#78350f" rx="1"/>
+        </svg>`;
+      }
+
       const DEFAULT_STUDENTS = [
         { id: 'std-1', name: 'Aji Pratama Putra', gender: 'Putra', class: '1', nis: '', nisn: '', ttl: 'Banyumas, 27 Jun 2019', father: 'Nasikun', mother: 'Enah Susilowati', parentName: 'Nasikun', job: 'Buruh', address: 'Gerduren RT 03/07', phone: '', notes: '', active: true, createdAt: '2026-08-01' },
         { id: 'std-2', name: 'Aksan Abjun Alvaro', gender: 'Putra', class: '1', nis: '', nisn: '', ttl: 'Banyumas, 17 Jan 2020', father: 'Juniarto', mother: 'Ari Murti', parentName: 'Juniarto', job: 'Sopir', address: 'Gerduren RT 03/06', phone: '', notes: '', active: true, createdAt: '2026-08-01' },
@@ -206,6 +253,7 @@
         phone: '0812-3456-7890',
         receiptPrefix: 'KW',
         darkMode: false,
+        schoolLogo: null,
         teacherSignature: null,
         showTeacherSignature: true
       };
@@ -238,7 +286,8 @@
           fileSpreadsheet: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>`,
           refresh: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>`,
           menu: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>`,
-          signature: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>`
+          signature: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>`,
+          userX: `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7a4 4 0 11-8 0 4 4 0 018 0zM9 14a6 6 0 00-6 6v1h12v-1a6 6 0 00-6-6zM17 11l4 4m0-4l-4 4" /></svg>`
         };
         return icons[name] || '';
       }
@@ -293,7 +342,6 @@
             const p = localStorage.getItem('app_payment_types');
             if (p) {
               const parsed = JSON.parse(p);
-              // Ensure Buku 7 KIH is merged
               const has7KIH = parsed.some(item => item.name.toLowerCase().includes('7 kih') || item.id === 'pt-9');
               if (!has7KIH) {
                 parsed.push({
@@ -555,8 +603,12 @@
           <aside class="fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${Store.sidebarOpen ? 'translate-x-0' : '-translate-x-full'} no-print">
             <div class="p-5 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
               <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-emerald-400 flex items-center justify-center text-white shadow-md shadow-brand-500/20 font-bold text-lg">
-                  1
+                <div class="w-10 h-10 flex items-center justify-center flex-shrink-0">
+                  ${Store.settings.schoolLogo ? `
+                    <img src="${Store.settings.schoolLogo}" alt="Logo SD" class="w-10 h-10 object-contain" />
+                  ` : `
+                    ${getSchoolLogoSvg('w-10 h-10')}
+                  `}
                 </div>
                 <div>
                   <h1 class="font-bold text-sm leading-tight text-slate-900 dark:text-white">SI-BAYAR KELAS 1</h1>
@@ -601,12 +653,12 @@
 
             <div class="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
               <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 font-semibold text-xs">
-                  GP
+                <div class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center text-brand-700 dark:text-brand-300 font-semibold text-xs">
+                  GK
                 </div>
                 <div class="min-w-0 flex-1">
                   <p class="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">${escapeHtml(Store.settings.officerName)}</p>
-                  <p class="text-[11px] text-slate-500 dark:text-slate-400">Guru / Wali ${escapeHtml(Store.settings.className)}</p>
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400">Guru Kelas 1</p>
                 </div>
               </div>
             </div>
@@ -1437,16 +1489,16 @@
 
         return `
           <div class="space-y-6">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <button
                 onclick="AppActions.navigate('billing')"
-                class="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 flex items-center gap-2"
+                class="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 flex items-center gap-2 self-start"
               >
                 ${getSvgIcon('arrowLeft', 'w-4 h-4')}
                 <span>Kembali ke Daftar Tagihan</span>
               </button>
 
-              <div class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
                 <button
                   onclick="AppActions.openEditStudent('${student.id}')"
                   class="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5"
@@ -1454,6 +1506,16 @@
                   ${getSvgIcon('edit', 'w-4 h-4')}
                   <span>Edit Profil Siswa</span>
                 </button>
+
+                <button
+                  onclick="AppActions.openResetStudentModal('${student.id}')"
+                  class="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-xs font-semibold text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800 flex items-center gap-1.5 transition-colors shadow-sm"
+                  title="Hapus seluruh riwayat transaksi siswa ini saja (tanpa menghapus data siswa lain)"
+                >
+                  ${getSvgIcon('userX', 'w-4 h-4')}
+                  <span>Reset Pembayaran Siswa Ini</span>
+                </button>
+
                 ${summary.remainingTarget > 0 ? `
                   <button
                     onclick="AppActions.selectPOSStudent('${student.id}')"
@@ -1515,8 +1577,9 @@
             </div>
 
             <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-              <div class="p-4 border-b border-slate-100 dark:border-slate-700">
+              <div class="p-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
                 <h4 class="font-bold text-sm text-slate-800 dark:text-slate-100">Rincian Pos Pembayaran Siswa</h4>
+                <span class="text-xs text-slate-400">${summary.transactions.length} Transaksi Tercatat</span>
               </div>
               <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs">
@@ -1839,11 +1902,15 @@
             <!-- RECEIPT SHEET PREVIEW -->
             <div class="flex justify-center">
               <div class="bg-white text-slate-900 border border-slate-300 shadow-xl rounded-2xl p-8 transition-all print-shadow-none print-full-width ${Store.receiptPaperSize === 'A5' ? 'max-w-2xl w-full' : 'max-w-4xl w-full'}">
-                <!-- KOP -->
+                <!-- KOP WITH OFFICIAL SD LOGO -->
                 <div class="border-b-2 border-slate-900 pb-4 mb-5 text-center">
-                  <div class="flex items-center justify-center gap-3 mb-1">
-                    <div class="w-10 h-10 rounded-full border-2 border-slate-900 flex items-center justify-center font-bold text-base">
-                      SD
+                  <div class="flex items-center justify-center gap-4 mb-1">
+                    <div class="w-14 h-14 flex items-center justify-center flex-shrink-0">
+                      ${Store.settings.schoolLogo ? `
+                        <img src="${Store.settings.schoolLogo}" alt="Logo SD" class="w-14 h-14 object-contain" />
+                      ` : `
+                        ${getSchoolLogoSvg('w-14 h-14')}
+                      `}
                     </div>
                     <div>
                       <h2 class="text-base sm:text-lg font-black uppercase tracking-wide text-slate-900 leading-tight">
@@ -1954,7 +2021,7 @@
                   </div>
                 </div>
 
-                <!-- SIGNATURES (DYNAMIC PARENT NAME + UPLOADED TEACHER SIGNATURE) -->
+                <!-- SIGNATURES (DYNAMIC PARENT NAME + TEACHER: GURU KELAS 1) -->
                 <div class="grid grid-cols-2 gap-8 text-center text-xs mt-6 pt-2 break-inside-avoid">
                   <!-- LEFT: PARENT -->
                   <div class="flex flex-col justify-between">
@@ -1972,11 +2039,11 @@
                     </div>
                   </div>
 
-                  <!-- RIGHT: TEACHER (WITH DIGITAL SIGNATURE IMAGE IF UPLOADED) -->
+                  <!-- RIGHT: TEACHER (GURU KELAS 1 ONLY) -->
                   <div class="flex flex-col justify-between">
                     <div>
                       <p class="text-slate-500 mb-1">Purwojati, ${formatDateIndo(tx.date)}</p>
-                      <p class="text-slate-500 mb-2">Guru / Bendahara Kelas 1,</p>
+                      <p class="text-slate-500 mb-2">Guru Kelas 1,</p>
                     </div>
                     <div class="h-16 flex items-center justify-center my-0.5">
                       ${Store.settings.teacherSignature && Store.settings.showTeacherSignature ? `
@@ -2047,8 +2114,19 @@
 
             <div class="bg-white text-slate-900 rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm print-shadow-none print-full-width">
               <div class="border-b-2 border-slate-900 pb-4 mb-6 text-center">
-                <h2 class="text-base sm:text-lg font-black uppercase text-slate-900">${escapeHtml(Store.settings.schoolName || 'SD NEGERI 1 GERDUREN')}</h2>
-                <p class="text-xs text-slate-600">${escapeHtml(Store.settings.schoolAddress || 'Kec. Purwojati, Kab. Banyumas, Jawa Tengah')}</p>
+                <div class="flex items-center justify-center gap-4 mb-2">
+                  <div class="w-14 h-14 flex items-center justify-center flex-shrink-0">
+                    ${Store.settings.schoolLogo ? `
+                      <img src="${Store.settings.schoolLogo}" alt="Logo SD" class="w-14 h-14 object-contain" />
+                    ` : `
+                      ${getSchoolLogoSvg('w-14 h-14')}
+                    `}
+                  </div>
+                  <div>
+                    <h2 class="text-base sm:text-lg font-black uppercase text-slate-900">${escapeHtml(Store.settings.schoolName || 'SD NEGERI 1 GERDUREN')}</h2>
+                    <p class="text-xs text-slate-600">${escapeHtml(Store.settings.schoolAddress || 'Kec. Purwojati, Kab. Banyumas, Jawa Tengah')}</p>
+                  </div>
+                </div>
                 <h3 class="text-sm font-bold uppercase mt-2 tracking-wider underline">
                   ${Store.reportState.type === 'CLASS_SUMMARY' ? 'LAPORAN REKAPITULASI KEUANGAN KELAS 1' : 'LAPORAN STATUS PEMBAYARAN INDIVIDUAL SISWA'}
                 </h3>
@@ -2161,7 +2239,7 @@
                 </div>
                 <div>
                   <p class="text-slate-500 mb-1">Purwojati, ${formatDateIndo(getTodayISO())}</p>
-                  <p class="text-slate-500 mb-14">Guru / Bendahara Kelas 1,</p>
+                  <p class="text-slate-500 mb-14">Guru Kelas 1,</p>
                   <p class="font-bold text-slate-900 border-t border-slate-400 inline-block px-8 pt-1">
                     ${escapeHtml(Store.settings.officerName || 'Zaenul Kirom Anggi Pamukti, S.Pd.SD')}<br />
                     <span class="font-normal text-[10px] text-slate-500">NIP. .................................................</span>
@@ -2192,7 +2270,7 @@
                   <input type="text" id="set_schoolAddress" value="${escapeHtml(Store.settings.schoolAddress)}" class="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl font-medium text-slate-800 dark:text-slate-100" />
                 </div>
                 <div>
-                  <label class="text-slate-400 block mb-1 font-medium">Nama Guru / Bendahara Kelas:</label>
+                  <label class="text-slate-400 block mb-1 font-medium">Nama Guru Kelas:</label>
                   <input type="text" id="set_officerName" value="${escapeHtml(Store.settings.officerName)}" class="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl font-bold text-slate-800 dark:text-slate-100" />
                 </div>
                 <div>
@@ -2221,10 +2299,58 @@
               </div>
             </div>
 
+            <!-- CARD LOGO SEKOLAH -->
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+              <div>
+                <h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">Logo Sekolah (SD Negeri 1 Gerduren)</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Logo resmi tercantum pada kop kwitansi dan laporan</p>
+              </div>
+
+              <div class="p-5 bg-slate-50 dark:bg-slate-700/30 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-6">
+                <div class="flex items-center gap-4">
+                  <div class="w-20 h-20 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-600 rounded-2xl flex items-center justify-center p-2 overflow-hidden shadow-sm">
+                    ${Store.settings.schoolLogo ? `
+                      <img src="${Store.settings.schoolLogo}" alt="Logo SD" class="max-h-full max-w-full object-contain" />
+                    ` : `
+                      ${getSchoolLogoSvg('w-16 h-16')}
+                    `}
+                  </div>
+                  <div>
+                    <h4 class="font-bold text-sm text-slate-800 dark:text-slate-100">
+                      ${Store.settings.schoolLogo ? 'Logo Kustom Terpasang' : 'Logo Resmi SD Negeri 1 Gerduren (Bawaan)'}
+                    </h4>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Logo ini ditampilkan di kop kwitansi dan kop laporan rekap kelas.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2.5">
+                  <input type="file" id="settings_logo_file" accept="image/*" onchange="AppActions.handleLogoUpload(this)" class="hidden" />
+                  <button
+                    onclick="document.getElementById('settings_logo_file').click()"
+                    class="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-md"
+                  >
+                    ${getSvgIcon('upload', 'w-4 h-4')}
+                    <span>Ganti File Logo</span>
+                  </button>
+
+                  ${Store.settings.schoolLogo ? `
+                    <button
+                      onclick="AppActions.resetSchoolLogo()"
+                      class="px-3.5 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold"
+                    >
+                      Reset ke Default
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            </div>
+
             <!-- CARD UNGGAHAN TANDA TANGAN GURU -->
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
               <div>
-                <h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">Tanda Tangan Digital Guru / Bendahara</h3>
+                <h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">Tanda Tangan Digital Guru Kelas 1</h3>
                 <p class="text-xs text-slate-500 dark:text-slate-400">Unggah foto / gambar tanda tangan (PNG transparan / JPG) untuk dicetak otomatis pada kwitansi</p>
               </div>
 
@@ -2325,17 +2451,51 @@
               </div>
             </div>
 
-            <!-- DANGER ZONE -->
-            <div class="bg-rose-50/50 dark:bg-rose-950/20 rounded-2xl p-6 border border-rose-200 dark:border-rose-900/60 shadow-sm space-y-4">
+            <!-- DANGER ZONE (TERMASUK RESET PER INDIVIDU SISWA) -->
+            <div class="bg-rose-50/50 dark:bg-rose-950/20 rounded-2xl p-6 border border-rose-200 dark:border-rose-900/60 shadow-sm space-y-5">
               <div>
-                <h3 class="font-bold text-rose-800 dark:text-rose-300 text-lg">Zona Pengosongan Data (Danger Zone)</h3>
-                <p class="text-xs text-rose-600 dark:text-rose-400">Harap berhati-hati sebelum melakukan tindakan ini.</p>
+                <h3 class="font-bold text-rose-800 dark:text-rose-300 text-lg">Zona Pengosongan & Reset Data</h3>
+                <p class="text-xs text-rose-600 dark:text-rose-400">Pilih reset perorangan siswa tertentu atau reset massal.</p>
               </div>
 
-              <div class="flex flex-wrap gap-3">
+              <!-- RESET PER INDIVIDU SISWA -->
+              <div class="p-4 rounded-xl bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-900/40 space-y-3">
+                <div>
+                  <h4 class="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    ${getSvgIcon('userX', 'w-4 h-4 text-rose-600')}
+                    <span>Reset Riwayat Pembayaran Perorangan (Salah Satu Siswa Saja)</span>
+                  </h4>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Hanya menghapus transaksi pembayaran milik siswa yang dipilih. Transaksi siswa lain tetap aman.
+                  </p>
+                </div>
+
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <select 
+                    id="settings_reset_student_select"
+                    class="flex-1 p-2.5 text-xs bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-xl font-medium dark:text-white"
+                  >
+                    <option value="">-- Pilih Siswa yang Ingin Direset Pembayarannya --</option>
+                    ${Store.students.map(s => {
+                      const count = Store.transactions.filter(t => t.studentId === s.id).length;
+                      return `<option value="${s.id}">${escapeHtml(s.name)} (${count} Transaksi)</option>`;
+                    }).join('')}
+                  </select>
+
+                  <button 
+                    onclick="AppActions.triggerResetSelectedStudentFromSettings()"
+                    class="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/20 whitespace-nowrap"
+                  >
+                    ${getSvgIcon('userX', 'w-4 h-4')}
+                    <span>Reset Pembayaran Siswa Ini</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap gap-3 pt-1 border-t border-rose-200/60 dark:border-rose-900/40">
                 <button onclick="AppActions.resetTransactionsOnly()" class="px-4 py-2.5 bg-rose-100 hover:bg-rose-200 text-rose-800 dark:bg-rose-900/50 dark:text-rose-200 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-colors border border-rose-300">
                   ${getSvgIcon('trash', 'w-4 h-4')}
-                  <span>Hapus Seluruh Transaksi Saja</span>
+                  <span>Hapus Seluruh Transaksi Kelas</span>
                 </button>
                 <button onclick="AppActions.factoryReset()" class="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/20">
                   ${getSvgIcon('alertCircle', 'w-4 h-4')}
@@ -2560,7 +2720,7 @@
           `;
         }
 
-        // --- POWERFUL FULL EDIT / KOREKSI TRANSAKSI MODAL ---
+        // --- FULL EDIT / KOREKSI TRANSAKSI MODAL ---
         if (Store.modal.type === 'EDIT_TRANSACTION') {
           const tx = Store.modal.transaction;
           const editItems = Store.modal.editItems || tx.items.map(i => ({ ...i }));
@@ -2609,7 +2769,7 @@
                       />
                     </div>
                     <div>
-                      <label class="text-slate-500 dark:text-slate-400 block mb-1 font-semibold">Nama Petugas:</label>
+                      <label class="text-slate-500 dark:text-slate-400 block mb-1 font-semibold">Nama Petugas (Guru Kelas 1):</label>
                       <input 
                         type="text" 
                         id="etf_officer" 
@@ -2726,6 +2886,7 @@
               <div class="p-4 rounded-xl shadow-lg border text-sm font-medium flex items-center gap-3 pointer-events-auto ${
                 toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-700 shadow-emerald-500/20' :
                 toast.type === 'error' ? 'bg-rose-600 text-white border-rose-700 shadow-rose-500/20' :
+                toast.type === 'info' ? 'bg-sky-600 text-white border-sky-700 shadow-sky-500/20' :
                 'bg-amber-600 text-white border-amber-700 shadow-amber-500/20'
               }">
                 ${getSvgIcon(toast.type === 'success' ? 'checkCircle' : 'alertCircle', 'w-5 h-5 flex-shrink-0')}
@@ -2757,6 +2918,74 @@
             document.documentElement.classList.remove('dark');
           }
           Store.save();
+          Store.render();
+        },
+
+        // --- RESET PEMBAYARAN PER INDIVIDU SISWA ---
+        openResetStudentModal(studentId) {
+          const st = Store.students.find(s => s.id === studentId);
+          if (!st) return;
+          const studentTxs = Store.transactions.filter(t => t.studentId === studentId);
+          if (studentTxs.length === 0) {
+            Store.showToast(`Siswa "${st.name}" belum memiliki riwayat pembayaran untuk di-reset.`, 'info');
+            return;
+          }
+          const totalAmount = studentTxs.reduce((acc, t) => acc + (t.totalAmount || 0), 0);
+          Store.modal = {
+            type: 'CONFIRM',
+            title: 'Reset Pembayaran Siswa?',
+            message: `Anda yakin ingin menghapus seluruh riwayat pembayaran (${studentTxs.length} transaksi - ${formatRupiah(totalAmount)}) khusus untuk siswa "${st.name}"? Data profil siswa tetap tersimpan. Transaksi siswa lainnya tidak akan terpengaruh.`,
+            confirmText: 'Ya, Reset Pembayaran Siswa Ini',
+            variant: 'danger',
+            onConfirm: () => {
+              Store.transactions = Store.transactions.filter(t => t.studentId !== studentId);
+              if (Store.selectedReceiptId) {
+                const exists = Store.transactions.some(t => t.id === Store.selectedReceiptId);
+                if (!exists) Store.selectedReceiptId = null;
+              }
+              Store.save();
+              Store.showToast(`Seluruh riwayat pembayaran siswa "${st.name}" berhasil di-reset.`, 'warning');
+              Store.render();
+              if (Store.currentTab === 'history') window.AppActions.updateHistoryTableDOM();
+              if (Store.currentTab === 'billing') window.AppActions.updateBillingTableDOM();
+              if (Store.currentTab === 'students') window.AppActions.updateStudentsTableDOM();
+            }
+          };
+          Store.render();
+        },
+
+        triggerResetSelectedStudentFromSettings() {
+          const select = document.getElementById('settings_reset_student_select');
+          if (!select || !select.value) {
+            Store.showToast('Silakan pilih salah satu siswa dari daftar.', 'error');
+            return;
+          }
+          this.openResetStudentModal(select.value);
+        },
+
+        // --- SCHOOL LOGO MANAGEMENT ---
+        handleLogoUpload(input) {
+          const file = input.files[0];
+          if (!file) return;
+          if (!file.type.startsWith('image/')) {
+            Store.showToast('Harap pilih file gambar (PNG, JPG, SVG).', 'error');
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            Store.settings.schoolLogo = e.target.result;
+            Store.save();
+            Store.showToast('Logo sekolah berhasil diperbarui!');
+            Store.render();
+          };
+          reader.readAsDataURL(file);
+          input.value = '';
+        },
+
+        resetSchoolLogo() {
+          Store.settings.schoolLogo = null;
+          Store.save();
+          Store.showToast('Logo sekolah dikembalikan ke logo standar.', 'warning');
           Store.render();
         },
 
@@ -3399,21 +3628,28 @@
                   <div class="flex items-center justify-center gap-1.5">
                     <button
                       onclick="AppActions.navigate('student-detail', { studentId: '${st.id}' })"
-                      title="Lihat Rincian"
+                      title="Lihat Rincian & Riwayat"
                       class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-brand-50 hover:text-brand-600"
                     >
                       ${getSvgIcon('billing', 'w-4 h-4')}
                     </button>
                     <button
                       onclick="AppActions.openEditStudent('${st.id}')"
-                      title="Edit"
+                      title="Edit Data Siswa"
                       class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-amber-50 hover:text-amber-600"
                     >
                       ${getSvgIcon('edit', 'w-4 h-4')}
                     </button>
                     <button
+                      onclick="AppActions.openResetStudentModal('${st.id}')"
+                      title="Reset Pembayaran Siswa Ini"
+                      class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-rose-50 hover:text-rose-600"
+                    >
+                      ${getSvgIcon('userX', 'w-4 h-4')}
+                    </button>
+                    <button
                       onclick="AppActions.deleteStudent('${st.id}')"
-                      title="Hapus"
+                      title="Hapus Siswa"
                       class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-rose-50 hover:text-rose-600"
                     >
                       ${getSvgIcon('trash', 'w-4 h-4')}
@@ -3517,7 +3753,7 @@
               Store.transactions = Store.transactions.filter(t => t.id !== id);
               Store.save();
               Store.showToast(`Transaksi ${tx.receiptNo} telah dihapus.`, 'warning');
-              AppActions.updateHistoryTableDOM();
+              window.AppActions.updateHistoryTableDOM();
             }
           };
           Store.render();
@@ -3595,7 +3831,7 @@
               Store.students = Store.students.filter(s => s.id !== id);
               Store.save();
               Store.showToast(`Siswa ${st.name} telah dihapus.`, 'warning');
-              AppActions.updateStudentsTableDOM();
+              window.AppActions.updateStudentsTableDOM();
             }
           };
           Store.render();
@@ -3779,14 +4015,14 @@
         resetTransactionsOnly() {
           Store.modal = {
             type: 'CONFIRM',
-            title: 'Hapus Semua Transaksi?',
-            message: 'Tindakan ini akan mengosongkan semua riwayat transaksi pembayaran. Data siswa dan tarif tetap aman.',
+            title: 'Hapus Semua Transaksi Kelas?',
+            message: 'Tindakan ini akan mengosongkan semua riwayat transaksi pembayaran seluruh siswa di kelas. Data siswa dan tarif tetap aman.',
             confirmText: 'Hapus Semua Transaksi',
             variant: 'danger',
             onConfirm: () => {
               Store.transactions = [];
               Store.save();
-              Store.showToast('Semua transaksi telah dikosongkan.', 'warning');
+              Store.showToast('Semua transaksi kelas telah dikosongkan.', 'warning');
             }
           };
           Store.render();
