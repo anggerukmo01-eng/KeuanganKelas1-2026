@@ -472,18 +472,35 @@
             if (remote && (this.config.revision === null || this.config.revision === undefined)) { Store.showToast('Cloud sudah memiliki data. Tekan Ambil dari Cloud terlebih dahulu agar data tidak tertimpa tanpa sengaja.', 'warning'); return; }
             if (!remote && this.config.revision !== null && this.config.revision !== undefined && Number(this.config.revision) > 0) { Store.showToast('Snapshot cloud yang pernah disinkronkan tidak ditemukan. Sinkronisasi dihentikan demi keamanan.', 'error'); return; }
             if (remote && Number(remote.revision) !== Number(this.config.revision)) { Store.showToast('Konflik versi terdeteksi: data cloud berubah sejak sinkronisasi terakhir. Ambil data cloud dan periksa perbedaannya sebelum mengirim ulang.', 'warning'); return; }
-            const payload = { schema: 'keuangan-kelas-backup', version: '2.1', appName: 'Sistem Pembayaran Kelas 1 SD', exportedAt: new Date().toISOString(), students: Store.students, paymentTypes: Store.paymentTypes, transactions: Store.transactions, settings: Store.settings, auditLogs: Store.auditLogs || [] };
+            const payload = JSON.parse(JSON.stringify({ schema: 'keuangan-kelas-backup', version: '2.1', appName: 'Sistem Pembayaran Kelas 1 SD', exportedAt: new Date().toISOString(), students: Store.students, paymentTypes: Store.paymentTypes, transactions: Store.transactions, settings: Store.settings, auditLogs: Store.auditLogs || [] }));
             const expected = remote ? Number(remote.revision) : 0;
-            const { data, error } = await this.client.rpc('save_app_workspace_snapshot', { p_workspace_id: this.config.workspaceId, p_expected_revision: expected, p_payload: payload });
-            if (error) { Store.showToast('Cloud menolak pengiriman. ' + (error.message || 'Periksa akses dan versi data.'), 'error'); return; }
-            const row = Array.isArray(data) ? data[0] : data;
-            if (!row || row.revision === undefined) { Store.showToast('Server menyimpan data tetapi tidak mengembalikan revisi. Periksa status cloud sebelum mencoba lagi.', 'warning'); return; }
-            this.config.revision = Number(row.revision); this.persistConfig();
-            Store.recordAudit('KIRIM DATA KE CLOUD', 'Cloud', this.config.workspaceId, 'Snapshot tersimpan pada revisi ' + this.config.revision, Store.transactions.reduce((sum, tx) => sum + Number(tx.totalAmount || 0), 0)); Store.save();
-            Store.showToast('Data berhasil dikirim ke cloud. Revisi ' + this.config.revision + '.', 'success'); Store.render();
+            const amount = Store.transactions.reduce((sum, tx) => sum + Number(tx.totalAmount || 0), 0);
+            Store.modal = {
+              type: 'CONFIRM', title: 'Kirim Snapshot ke Cloud?', variant: 'danger', confirmText: 'Kirim Snapshot Ini',
+              message: 'Ruang: ' + (this.config.workspaceName || this.config.workspaceId) + '. Revisi cloud yang akan diganti: ' + expected + '. Data lokal berisi ' + payload.students.length + ' siswa, ' + payload.paymentTypes.length + ' jenis tagihan, dan ' + payload.transactions.length + ' transaksi dengan total pembayaran ' + formatRupiah(amount) + '. Seluruh snapshot cloud akan diganti dengan data lokal, termasuk riwayat dan pengaturan. Jika data lokal bukan sumber terbaru, batalkan dan gunakan Ambil dari Cloud. Server tetap memeriksa revisi untuk mencegah konflik.',
+              onConfirm: () => { this.commitSnapshot(payload, expected); }
+            };
+            Store.render();
           } catch (err) { Store.showToast('Sinkronisasi gagal: ' + err.message, 'error'); }
         },
-        async pullCloudToLocal() {
+        async commitSnapshot(payload, expected) {
+          if (!(await this.requireClientAndSession())) return;
+          try {
+            const { data, error } = await this.client.rpc('save_app_workspace_snapshot', { p_workspace_id: this.config.workspaceId, p_expected_revision: expected, p_payload: payload });
+            if (error) {
+              const isConflict = error.code === '40001' || String(error.message || '').includes('REVISION_CONFLICT');
+              Store.showToast(isConflict ? 'Konflik revisi: snapshot cloud berubah sebelum pengiriman dikonfirmasi. Ambil dari Cloud, tinjau data, lalu ulangi.' : 'Cloud menolak pengiriman. ' + (error.message || 'Periksa akses dan validasi data.'), isConflict ? 'warning' : 'error');
+              return;
+            }
+            const row = Array.isArray(data) ? data[0] : data;
+            if (!row || row.revision === undefined) { Store.showToast('Server tidak mengembalikan revisi. Periksa status cloud sebelum mencoba ulang.', 'warning'); return; }
+            this.config.revision = Number(row.revision); this.persistConfig();
+            Store.recordAudit('KIRIM DATA KE CLOUD', 'Cloud', this.config.workspaceId, 'Snapshot tersimpan pada revisi ' + this.config.revision, payload.transactions.reduce((sum, tx) => sum + Number(tx.totalAmount || 0), 0));
+            Store.save(); Store.showToast('Data berhasil dikirim ke cloud. Revisi ' + this.config.revision + '.', 'success'); Store.render();
+          } catch (err) { Store.showToast('Sinkronisasi gagal: ' + err.message, 'error'); }
+        },
+
+                async pullCloudToLocal() {
           if (!(await this.requireClientAndSession())) return;
           if (!this.config.workspaceId) { Store.showToast('Pilih ruang cloud terlebih dahulu.', 'error'); return; }
           try {
