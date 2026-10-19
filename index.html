@@ -372,10 +372,10 @@
             this.signature = signature;
             this.client.auth.onAuthStateChange((_event, session) => {
               this.session = session || null; this.user = session && session.user ? session.user : null;
-              if (window.Store && typeof Store.render === 'function') Store.render();
+              if (typeof Store !== 'undefined' && typeof Store.render === 'function') Store.render();
             });
             this.client.auth.getSession().then(({ data, error }) => {
-              if (!error) { this.session = data.session || null; this.user = this.session && this.session.user ? this.session.user : null; if (window.Store && typeof Store.render === 'function') Store.render(); }
+              if (!error) { this.session = data.session || null; this.user = this.session && this.session.user ? this.session.user : null; if (typeof Store !== 'undefined' && typeof Store.render === 'function') Store.render(); }
             }).catch(err => console.warn('Status login cloud belum dapat dibaca.', err));
             return true;
           } catch (err) { this.client = null; this.signature = ''; console.error('Inisialisasi client cloud gagal.', err); return false; }
