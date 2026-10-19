@@ -194,7 +194,10 @@
           if (Math.round(sum) !== Math.round(Number(tx.totalAmount))) return fail('Total transaksi ' + tx.receiptNo + ' tidak sama dengan jumlah rincian.');
         }
         if (data.settings !== undefined && (!data.settings || typeof data.settings !== 'object' || Array.isArray(data.settings))) return fail('Pengaturan aplikasi tidak valid.');
-        return { ok: true, transactions };
+        const auditLogs = data.auditLogs === undefined ? [] : data.auditLogs;
+        if (!Array.isArray(auditLogs) || auditLogs.length > 5000) return fail('Riwayat audit pada backup tidak valid.');
+        for (const log of auditLogs) if (!log || typeof log !== 'object' || typeof log.id !== 'string' || typeof log.action !== 'string' || typeof log.at !== 'string') return fail('Ada entri riwayat audit yang tidak valid.');
+        return { ok: true, transactions, auditLogs };
       }
 
       function getSchoolLogoSvg(cls = "w-14 h-14") {
@@ -339,6 +342,7 @@
         paymentTypes: [],
         transactions: [],
         settings: {},
+        auditLogs: [],
         lastSaveError: null,
         currentTab: 'dashboard',
         sidebarOpen: false,
@@ -417,6 +421,12 @@
           } catch(e) { this.transactions = []; }
 
           try {
+            const logs = localStorage.getItem('app_audit_logs');
+            this.auditLogs = logs ? JSON.parse(logs) : [];
+            if (!Array.isArray(this.auditLogs)) this.auditLogs = [];
+          } catch(e) { this.auditLogs = []; }
+
+          try {
             const set = localStorage.getItem('app_settings');
             if (set) {
               const parsedSet = JSON.parse(set);
@@ -437,10 +447,10 @@
         },
 
         save() {
-          const keys = ['app_students', 'app_payment_types', 'app_transactions', 'app_settings'];
+          const keys = ['app_students', 'app_payment_types', 'app_transactions', 'app_settings', 'app_audit_logs'];
           let previous = [];
           try {
-            const values = [this.students, this.paymentTypes, this.transactions, this.settings];
+            const values = [this.students, this.paymentTypes, this.transactions, this.settings, this.auditLogs || []];
             const serialized = keys.map((key, index) => [key, JSON.stringify(values[index])]);
             previous = keys.map(key => [key, localStorage.getItem(key)]);
             try {
@@ -461,6 +471,22 @@
             this.showToast('Gagal menyimpan data ke perangkat. Data mungkin belum tercatat. Segera buat backup dan periksa ruang penyimpanan.', 'error');
             return false;
           }
+        },
+
+        recordAudit(action, entity, entityId, summary, amount = null) {
+          if (!Array.isArray(this.auditLogs)) this.auditLogs = [];
+          const numericAmount = amount === null || amount === undefined || amount === '' ? null : Number(amount);
+          this.auditLogs.unshift({
+            id: 'audit-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+            at: new Date().toISOString(),
+            actor: (this.settings && this.settings.officerName) || 'Pengguna perangkat',
+            action: String(action || 'PERUBAHAN').slice(0, 80),
+            entity: String(entity || 'Data').slice(0, 80),
+            entityId: String(entityId || '').slice(0, 120),
+            summary: String(summary || '').slice(0, 500),
+            amount: Number.isFinite(numericAmount) ? numericAmount : null
+          });
+          this.auditLogs = this.auditLogs.slice(0, 1500);
         },
 
         showToast(message, type = 'success') {
@@ -3844,6 +3870,23 @@
               </div>
             </div>
 
+            <!-- AUDIT TRAIL -->
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div><h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">Jejak Perubahan Data</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Aktivitas pembayaran, koreksi, penghapusan, restore dan perubahan data. Maksimal 1.500 entri terbaru.</p></div>
+                <button onclick="AppActions.exportAuditLogCSV()" class="shrink-0 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2">
+                  ${getSvgIcon('download', 'w-4 h-4')}<span>Unduh Jejak Perubahan (CSV)</span>
+                </button>
+              </div>
+              <p class="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-3">Jejak ini tersimpan pada perangkat/browser ini dan ikut dalam backup JSON. Ini bukan catatan audit server.</p>
+              <div class="overflow-x-auto border border-slate-100 dark:border-slate-700 rounded-xl"><table class="min-w-full text-xs text-left">
+                <thead class="bg-slate-50 dark:bg-slate-700/60 text-slate-500 uppercase tracking-wide"><tr><th class="p-3">Waktu</th><th class="p-3">Aksi</th><th class="p-3">Objek</th><th class="p-3">Ringkasan</th><th class="p-3 text-right">Nominal</th></tr></thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                  ${(Store.auditLogs || []).slice(0, 15).map(log => `<tr class="align-top hover:bg-slate-50 dark:hover:bg-slate-700/30"><td class="p-3 whitespace-nowrap text-slate-500">${escapeHtml(log.at ? formatDateIndo(log.at.slice(0,10)) + ' ' + (log.at.slice(11,19) || '') : '-')}</td><td class="p-3 font-bold text-slate-700 dark:text-slate-200">${escapeHtml(log.action || '-')}</td><td class="p-3 text-slate-500">${escapeHtml((log.entity || 'Data') + (log.entityId ? ' · ' + log.entityId : ''))}</td><td class="p-3 min-w-[220px] text-slate-600 dark:text-slate-300">${escapeHtml(log.summary || '-')}<span class="block text-[10px] text-slate-400 mt-1">${escapeHtml(log.actor || 'Pengguna perangkat')}</span></td><td class="p-3 text-right whitespace-nowrap font-semibold">${log.amount !== null && log.amount !== undefined ? formatRupiah(log.amount) : '-'}</td></tr>`).join('') || '<tr><td colspan="5" class="p-8 text-center text-slate-400">Belum ada jejak perubahan.</td></tr>'}
+                </tbody></table></div>
+            </div>
+
             <!-- DANGER ZONE (TERMASUK RESET PER INDIVIDU SISWA) -->
             <div class="bg-rose-50/50 dark:bg-rose-950/20 rounded-2xl p-6 border border-rose-200 dark:border-rose-900/60 shadow-sm space-y-5">
               <div>
@@ -4792,6 +4835,7 @@
           if (Store.transactions.some(tx => tx.receiptNo === receiptNo)) { Store.pos.receiptNo = Store.generateReceiptNo(); Store.showToast('Nomor kuitansi sudah pernah dipakai. Nomor baru dibuat, silakan simpan kembali.', 'warning'); Store.render(); return; }
           const tx = { id: 'tx-' + Date.now() + '-' + Math.random().toString(36).substr(2,6), receiptNo, date: Store.pos.date || getTodayISO(), studentId: st.id, studentName: st.name, studentGender: st.gender, studentClass: st.class || '1', parentName: parent, items, totalAmount: total, cashReceived: cash, changeAmount: cash-total, officer: Store.settings.officerName, generalNotes: Store.pos.generalNotes || '', createdAt: new Date().toISOString(), isCorrected: false };
           Store.transactions.unshift(tx);
+          Store.recordAudit('PEMBAYARAN DICATAT', 'Transaksi', tx.id, 'Kuitansi ' + tx.receiptNo + ' | ' + tx.studentName, tx.totalAmount);
           if (!Store.save()) { Store.transactions = Store.transactions.filter(row => row.id !== tx.id); Store.showToast('Transaksi tidak tersimpan karena ruang penyimpanan bermasalah. Jangan anggap pembayaran sudah tercatat.', 'error'); return; }
           Store.selectedReceiptId = tx.id; Store.selectedStudentId = st.id; Store.receiptFilterStudentId = st.id; if (!Store.multiReceiptSelectedIds.includes(tx.id)) Store.multiReceiptSelectedIds.unshift(tx.id);
           Store.showToast(`Pembayaran ${formatRupiah(total)} berhasil disimpan.`);
@@ -5250,6 +5294,7 @@
           };
 
           Store.transactions = Store.transactions.map(t => t.id === tx.id ? updated : t);
+          Store.recordAudit('KOREKSI TRANSAKSI', 'Transaksi', updated.id, 'Kuitansi ' + tx.receiptNo + '; ' + (corrNote || 'Koreksi data pembayaran') + '; total ' + formatRupiah(tx.totalAmount) + ' menjadi ' + formatRupiah(newTotal), newTotal);
           Store.selectedReceiptId = updated.id;
           Store.selectedStudentId = updated.studentId;
           Store.save();
@@ -5271,6 +5316,7 @@
             variant: 'danger',
             onConfirm: () => {
               Store.transactions = Store.transactions.filter(t => t.id !== id);
+              Store.recordAudit('HAPUS TRANSAKSI', 'Transaksi', tx.id, 'Kuitansi ' + tx.receiptNo + ' | ' + tx.studentName, tx.totalAmount);
               if (Store.selectedReceiptId === id) {
                 Store.selectedReceiptId = Store.transactions.length > 0 ? Store.transactions[0].id : null;
               }
@@ -5331,12 +5377,14 @@
               createdAt: getTodayISO()
             };
             Store.students.push(newSt);
+            Store.recordAudit('TAMBAH SISWA', 'Siswa', newSt.id, newSt.name);
             Store.showToast(`Siswa ${name} berhasil ditambahkan.`);
           } else {
             const stId = Store.modal.student.id;
             Store.students = Store.students.map(s => s.id === stId ? {
               ...s, name, gender, class: cls, father, mother, parentName, job, ttl, nis, phone, address, notes, active
             } : s);
+            Store.recordAudit('UBAH DATA SISWA', 'Siswa', stId, name);
             Store.showToast(`Data siswa ${name} berhasil diperbarui.`);
           }
           Store.save();
@@ -5355,6 +5403,7 @@
             variant: 'danger',
             onConfirm: () => {
               Store.students = Store.students.filter(s => s.id !== id);
+              Store.recordAudit('HAPUS SISWA', 'Siswa', st.id, st.name + ' (riwayat transaksi lama tetap ada)');
               Store.save();
               Store.showToast(`Siswa ${st.name} telah dihapus.`, 'warning');
               window.AppActions.updateStudentsTableDOM();
@@ -5441,12 +5490,14 @@
               isDefault: false
             };
             Store.paymentTypes.push(newPt);
+            Store.recordAudit('TAMBAH JENIS TAGIHAN', 'Tagihan', newPt.id, name + ' | periode: ' + period);
             Store.showToast(`Tagihan "${name}" berhasil ditambahkan.`);
           } else {
             const ptId = Store.modal.paymentType.id;
             Store.paymentTypes = Store.paymentTypes.map(p => p.id === ptId ? {
               ...p, name, applicableGender, pricePutra, pricePutri, period, notes, active
             } : p);
+            Store.recordAudit('UBAH JENIS TAGIHAN', 'Tagihan', ptId, name + ' | periode: ' + period);
             Store.showToast(`Tagihan "${name}" berhasil diperbarui.`);
           }
           Store.save();
@@ -5464,6 +5515,7 @@
             variant: 'danger',
             onConfirm: () => {
               Store.paymentTypes = Store.paymentTypes.filter(p => p.id !== id);
+              Store.recordAudit('HAPUS JENIS TAGIHAN', 'Tagihan', pt.id, pt.name + ' | periode: ' + (pt.period || '-'));
               Store.save();
               Store.showToast(`Tagihan "${pt.name}" telah dihapus.`, 'warning');
             }
@@ -5480,13 +5532,27 @@
           Store.settings.academicYear = document.getElementById('set_academicYear').value;
           Store.settings.phone = document.getElementById('set_phone').value;
           Store.settings.receiptPrefix = document.getElementById('set_receiptPrefix').value;
+          Store.recordAudit('UBAH PENGATURAN', 'Aplikasi', 'settings', 'Identitas sekolah dan pengaturan kuitansi diperbarui');
           Store.save();
           Store.showToast('Pengaturan sekolah berhasil disimpan.');
         },
 
-        downloadBackupJSON() {
+        exportAuditLogCSV() {
+          const logs = Store.auditLogs || [];
+          const csvCell = value => '"' + String(value === null || value === undefined ? '' : value).replace(/"/g, '""') + '"';
+          const rows = [['Waktu ISO', 'Petugas', 'Aksi', 'Jenis Data', 'ID Data', 'Ringkasan', 'Nominal (Rp)']];
+          logs.slice().reverse().forEach(log => rows.push([log.at || '', log.actor || '', log.action || '', log.entity || '', log.entityId || '', log.summary || '', log.amount === null || log.amount === undefined ? '' : log.amount]));
+          const csv = '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n');
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a');
+          a.href = url; a.download = 'jejak_perubahan_keuangan_kelas1_' + getTodayISO() + '.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1200);
+          Store.showToast('Jejak perubahan berhasil diekspor (' + logs.length + ' entri).');
+        },
+
+                downloadBackupJSON() {
           try {
-            const data = { schema: 'keuangan-kelas-backup', version: '2.0', appName: 'Sistem Pembayaran Kelas 1 SD', exportedAt: new Date().toISOString(), counts: { students: Store.students.length, activeStudents: Store.students.filter(s => s.active).length, paymentTypes: Store.paymentTypes.length, transactions: Store.transactions.length }, students: Store.students, paymentTypes: Store.paymentTypes, transactions: Store.transactions, settings: Store.settings };
+            Store.recordAudit('BACKUP DATA', 'Database', 'backup', 'Backup JSON diunduh');
+            Store.save();
+            const data = { schema: 'keuangan-kelas-backup', version: '2.1', appName: 'Sistem Pembayaran Kelas 1 SD', exportedAt: new Date().toISOString(), counts: { students: Store.students.length, activeStudents: Store.students.filter(s => s.active).length, paymentTypes: Store.paymentTypes.length, transactions: Store.transactions.length, auditLogs: (Store.auditLogs || []).length }, students: Store.students, paymentTypes: Store.paymentTypes, transactions: Store.transactions, settings: Store.settings, auditLogs: Store.auditLogs || [] };
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a');
             a.href = url; a.download = `backup_keuangan_kelas1_${getTodayISO()}_${new Date().toTimeString().slice(0,8).replace(/:/g,'')}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500);
             Store.showToast(`Backup berhasil dibuat: ${data.counts.students} siswa, ${data.counts.transactions} transaksi.`);
@@ -5501,15 +5567,18 @@
             try {
               const data = JSON.parse(event.target.result); const check = validateBackupData(data);
               if (!check.ok) { Store.showToast(check.message + ' Data saat ini tidak diubah.', 'error'); return; }
-              const transactions = check.transactions; const money = transactions.reduce((sum, tx) => sum + Number(tx.totalAmount), 0);
+              const transactions = check.transactions; const importedAuditLogs = check.auditLogs || []; const money = transactions.reduce((sum, tx) => sum + Number(tx.totalAmount), 0);
               const date = data.exportedAt || data.date || 'Waktu ekspor tidak tercatat';
               Store.modal = { type: 'CONFIRM', title: 'Periksa dan Pulihkan Backup',
                 message: `File: ${escapeHtml(file.name)}. Tanggal backup: ${escapeHtml(date)}. Berisi ${data.students.length} siswa (${data.students.filter(s => s.active !== false).length} aktif), ${data.paymentTypes.length} jenis tagihan, dan ${transactions.length} transaksi senilai ${formatRupiah(money)}. Restore mengganti seluruh database pada perangkat ini. Unduh backup kondisi sekarang terlebih dahulu bila masih diperlukan.`,
                 confirmText: 'Pulihkan Data Ini', variant: 'danger',
                 onConfirm: () => {
-                  const old = { students: Store.students, paymentTypes: Store.paymentTypes, transactions: Store.transactions, settings: Store.settings };
+                  const old = { students: Store.students, paymentTypes: Store.paymentTypes, transactions: Store.transactions, settings: Store.settings, auditLogs: Store.auditLogs || [] };
                   Store.students = data.students; Store.paymentTypes = data.paymentTypes; Store.transactions = transactions; Store.settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
-                  if (!Store.save()) { Store.students = old.students; Store.paymentTypes = old.paymentTypes; Store.transactions = old.transactions; Store.settings = old.settings; Store.save(); Store.render(); Store.showToast('Restore dibatalkan karena data tidak dapat disimpan.', 'error'); return; }
+                  const mergedAuditMap = new Map([...importedAuditLogs, ...(old.auditLogs || [])].map(log => [log.id, log]));
+                  Store.auditLogs = Array.from(mergedAuditMap.values()).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 1500);
+                  Store.recordAudit('RESTORE BACKUP', 'Database', 'restore', 'Restore ' + data.students.length + ' siswa dan ' + transactions.length + ' transaksi', money);
+                  if (!Store.save()) { Store.students = old.students; Store.paymentTypes = old.paymentTypes; Store.transactions = old.transactions; Store.settings = old.settings; Store.auditLogs = old.auditLogs; Store.save(); Store.render(); Store.showToast('Restore dibatalkan karena data tidak dapat disimpan.', 'error'); return; }
                   Store.selectedReceiptId = null; Store.selectedStudentId = null; Store.multiReceiptSelectedIds = Store.transactions.map(tx => tx.id); Store.pos.receiptNo = Store.generateReceiptNo(); Store.modal = null;
                   Store.showToast('Restore berhasil. Periksa kembali rekap sebelum digunakan.', 'success'); Store.render();
                 }
@@ -5528,7 +5597,10 @@
             confirmText: 'Hapus Semua Transaksi',
             variant: 'danger',
             onConfirm: () => {
+              const countBeforeReset = Store.transactions.length;
+              const amountBeforeReset = Store.transactions.reduce((sum, tx) => sum + Number(tx.totalAmount || 0), 0);
               Store.transactions = [];
+              Store.recordAudit('HAPUS SEMUA TRANSAKSI', 'Transaksi', 'all', countBeforeReset + ' transaksi dihapus', amountBeforeReset);
               Store.selectedReceiptId = null;
               Store.multiReceiptSelectedIds = [];
               Store.save();
@@ -5550,6 +5622,7 @@
               Store.paymentTypes = DEFAULT_PAYMENT_TYPES;
               Store.transactions = [];
               Store.settings = DEFAULT_SETTINGS;
+              Store.recordAudit('RESET TOTAL', 'Database', 'factory-reset', 'Data siswa, tagihan, transaksi dan pengaturan dikembalikan ke awal');
               Store.selectedReceiptId = null;
               Store.multiReceiptSelectedIds = [];
               ['app_students', 'app_payment_types', 'app_transactions', 'app_settings'].forEach(key => localStorage.removeItem(key));
