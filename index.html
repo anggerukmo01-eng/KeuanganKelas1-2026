@@ -437,14 +437,29 @@
         },
 
         save() {
+          const keys = ['app_students', 'app_payment_types', 'app_transactions', 'app_settings'];
+          let previous = [];
           try {
-            const data = [['app_students', this.students], ['app_payment_types', this.paymentTypes], ['app_transactions', this.transactions], ['app_settings', this.settings]];
-            const serialized = data.map(([key, value]) => [key, JSON.stringify(value)]);
-            serialized.forEach(([key, value]) => localStorage.setItem(key, value));
-            this.lastSaveError = null; return true;
+            const values = [this.students, this.paymentTypes, this.transactions, this.settings];
+            const serialized = keys.map((key, index) => [key, JSON.stringify(values[index])]);
+            previous = keys.map(key => [key, localStorage.getItem(key)]);
+            try {
+              serialized.forEach(([key, value]) => localStorage.setItem(key, value));
+            } catch (writeError) {
+              // Roll back every application key if a quota/security error interrupts a multi-key save.
+              keys.forEach(key => { try { localStorage.removeItem(key); } catch (rollbackError) { console.error('Gagal membersihkan kunci saat rollback:', key, rollbackError); } });
+              previous.forEach(([key, value]) => {
+                if (value !== null) { try { localStorage.setItem(key, value); } catch (rollbackError) { console.error('Gagal memulihkan kunci:', key, rollbackError); } }
+              });
+              throw writeError;
+            }
+            this.lastSaveError = null;
+            return true;
           } catch (err) {
-            this.lastSaveError = err; console.error('Gagal menyimpan database lokal:', err);
-            this.showToast('Gagal menyimpan data ke perangkat. Segera buat backup dan periksa ruang penyimpanan.', 'error'); return false;
+            this.lastSaveError = err;
+            console.error('Gagal menyimpan database lokal:', err);
+            this.showToast('Gagal menyimpan data ke perangkat. Data mungkin belum tercatat. Segera buat backup dan periksa ruang penyimpanan.', 'error');
+            return false;
           }
         },
 
