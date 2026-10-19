@@ -190,10 +190,16 @@ begin
   end if;
   if p_payload is null or pg_catalog.jsonb_typeof(p_payload) <> 'object' or pg_catalog.pg_column_size(p_payload) > 12582912 then raise exception 'PAYLOAD_INVALID_OR_TOO_LARGE' using errcode = '22023'; end if;
   if p_payload->>'schema' is distinct from 'keuangan-kelas-backup' then raise exception 'BACKUP_SCHEMA_INVALID' using errcode = '22023'; end if;
-  if pg_catalog.jsonb_typeof(p_payload->'students') is distinct from 'array' or pg_catalog.jsonb_array_length(p_payload->'students') < 1 or pg_catalog.jsonb_array_length(p_payload->'students') > 2000 then raise exception 'STUDENTS_ARRAY_INVALID' using errcode = '22023'; end if;
-  if pg_catalog.jsonb_typeof(p_payload->'paymentTypes') is distinct from 'array' or pg_catalog.jsonb_array_length(p_payload->'paymentTypes') > 500 then raise exception 'PAYMENT_TYPES_ARRAY_INVALID' using errcode = '22023'; end if;
-  if pg_catalog.jsonb_typeof(p_payload->'transactions') is distinct from 'array' or pg_catalog.jsonb_array_length(p_payload->'transactions') > 100000 then raise exception 'TRANSACTIONS_ARRAY_INVALID' using errcode = '22023'; end if;
-  if p_payload ? 'auditLogs' and (pg_catalog.jsonb_typeof(p_payload->'auditLogs') is distinct from 'array' or pg_catalog.jsonb_array_length(p_payload->'auditLogs') > 5000) then raise exception 'AUDIT_LOGS_ARRAY_INVALID' using errcode = '22023'; end if;
+  if pg_catalog.jsonb_typeof(p_payload->'students') is distinct from 'array' then raise exception 'STUDENTS_ARRAY_INVALID' using errcode = '22023'; end if;
+  if pg_catalog.jsonb_array_length(p_payload->'students') < 1 or pg_catalog.jsonb_array_length(p_payload->'students') > 2000 then raise exception 'STUDENTS_ARRAY_INVALID' using errcode = '22023'; end if;
+  if pg_catalog.jsonb_typeof(p_payload->'paymentTypes') is distinct from 'array' then raise exception 'PAYMENT_TYPES_ARRAY_INVALID' using errcode = '22023'; end if;
+  if pg_catalog.jsonb_array_length(p_payload->'paymentTypes') > 500 then raise exception 'PAYMENT_TYPES_ARRAY_INVALID' using errcode = '22023'; end if;
+  if pg_catalog.jsonb_typeof(p_payload->'transactions') is distinct from 'array' then raise exception 'TRANSACTIONS_ARRAY_INVALID' using errcode = '22023'; end if;
+  if pg_catalog.jsonb_array_length(p_payload->'transactions') > 100000 then raise exception 'TRANSACTIONS_ARRAY_INVALID' using errcode = '22023'; end if;
+  if p_payload ? 'auditLogs' then
+    if pg_catalog.jsonb_typeof(p_payload->'auditLogs') is distinct from 'array' then raise exception 'AUDIT_LOGS_ARRAY_INVALID' using errcode = '22023'; end if;
+    if pg_catalog.jsonb_array_length(p_payload->'auditLogs') > 5000 then raise exception 'AUDIT_LOGS_ARRAY_INVALID' using errcode = '22023'; end if;
+  end if;
   if exists (select 1 from pg_catalog.jsonb_array_elements(p_payload->'students') e(value) where pg_catalog.jsonb_typeof(value) is distinct from 'object' or coalesce(value->>'id','') = '' or coalesce(value->>'name','') = '') then raise exception 'STUDENT_ROW_INVALID' using errcode = '22023'; end if;
   if (select count(*) from pg_catalog.jsonb_array_elements(p_payload->'students')) <> (select count(distinct value->>'id') from pg_catalog.jsonb_array_elements(p_payload->'students')) then raise exception 'STUDENT_IDS_DUPLICATE' using errcode = '22023'; end if;
   if exists (select 1 from pg_catalog.jsonb_array_elements(p_payload->'paymentTypes') e(value) where pg_catalog.jsonb_typeof(value) is distinct from 'object' or coalesce(value->>'id','') = '' or coalesce(value->>'name','') = '') then raise exception 'PAYMENT_TYPE_ROW_INVALID' using errcode = '22023'; end if;
