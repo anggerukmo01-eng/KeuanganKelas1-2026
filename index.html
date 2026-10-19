@@ -172,6 +172,30 @@
           .replace(/"/g, '&quot;')
           .replace(/'/g, '&#039;');
       }
+      function validateBackupData(data) {
+        const fail = message => ({ ok: false, message });
+        if (!data || typeof data !== 'object' || Array.isArray(data)) return fail('File backup bukan objek JSON yang valid.');
+        const recognized = data.schema === 'keuangan-kelas-backup' || data.appName === 'Sistem Pembayaran Kelas 1 SD' || (Array.isArray(data.students) && Array.isArray(data.paymentTypes));
+        if (!recognized) return fail('File bukan backup aplikasi Keuangan Kelas.');
+        if (!Array.isArray(data.students) || !Array.isArray(data.paymentTypes) || !data.students.length) return fail('Daftar siswa atau tagihan tidak valid/kosong.');
+        const checkIds = (rows, label) => { const seen = new Set(); for (const row of rows) { if (!row || typeof row !== 'object' || Array.isArray(row) || typeof row.id !== 'string' || !row.id.trim()) return label + ' memiliki ID tidak valid.'; if (seen.has(row.id)) return label + ' memiliki ID ganda: ' + row.id; seen.add(row.id); } return ''; };
+        let error = checkIds(data.students, 'Data siswa'); if (error) return fail(error);
+        error = checkIds(data.paymentTypes, 'Jenis tagihan'); if (error) return fail(error);
+        for (const s of data.students) { if (typeof s.name !== 'string' || !s.name.trim() || !['Putra','Putri'].includes(s.gender)) return fail('Data nama/jenis kelamin siswa tidak valid.'); }
+        for (const p of data.paymentTypes) { if (typeof p.name !== 'string' || !p.name.trim() || !Number.isFinite(Number(p.pricePutra)) || Number(p.pricePutra)<0 || !Number.isFinite(Number(p.pricePutri)) || Number(p.pricePutri)<0) return fail('Nama atau tarif jenis tagihan tidak valid.'); }
+        const transactions = data.transactions === undefined ? [] : data.transactions;
+        if (!Array.isArray(transactions)) return fail('Daftar transaksi tidak valid.');
+        error = checkIds(transactions, 'Transaksi'); if (error) return fail(error);
+        const studentIds = new Set(data.students.map(s => s.id)); const receiptNos = new Set();
+        for (const tx of transactions) {
+          if (typeof tx.receiptNo !== 'string' || !tx.receiptNo.trim() || typeof tx.studentId !== 'string' || !studentIds.has(tx.studentId) || typeof tx.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(tx.date) || !Array.isArray(tx.items) || !Number.isFinite(Number(tx.totalAmount)) || Number(tx.totalAmount)<0) return fail('Ada transaksi yang tidak lengkap atau merujuk siswa yang tidak ditemukan.');
+          if (receiptNos.has(tx.receiptNo)) return fail('Nomor kuitansi ganda: ' + tx.receiptNo); receiptNos.add(tx.receiptNo);
+          let sum = 0; for (const item of tx.items) { if (!item || typeof item.paymentTypeId !== 'string' || !Number.isFinite(Number(item.paidAmount)) || Number(item.paidAmount)<0) return fail('Rincian item transaksi tidak valid.'); sum += Number(item.paidAmount); }
+          if (Math.round(sum) !== Math.round(Number(tx.totalAmount))) return fail('Total transaksi ' + tx.receiptNo + ' tidak sama dengan jumlah rincian.');
+        }
+        if (data.settings !== undefined && (!data.settings || typeof data.settings !== 'object' || Array.isArray(data.settings))) return fail('Pengaturan aplikasi tidak valid.');
+        return { ok: true, transactions };
+      }
 
       function getSchoolLogoSvg(cls = "w-14 h-14") {
         return `<svg class="${cls}" viewBox="0 0 200 220" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -315,6 +339,7 @@
         paymentTypes: [],
         transactions: [],
         settings: {},
+        lastSaveError: null,
         currentTab: 'dashboard',
         sidebarOpen: false,
         selectedStudentId: null,
@@ -412,10 +437,15 @@
         },
 
         save() {
-          localStorage.setItem('app_students', JSON.stringify(this.students));
-          localStorage.setItem('app_payment_types', JSON.stringify(this.paymentTypes));
-          localStorage.setItem('app_transactions', JSON.stringify(this.transactions));
-          localStorage.setItem('app_settings', JSON.stringify(this.settings));
+          try {
+            const data = [['app_students', this.students], ['app_payment_types', this.paymentTypes], ['app_transactions', this.transactions], ['app_settings', this.settings]];
+            const serialized = data.map(([key, value]) => [key, JSON.stringify(value)]);
+            serialized.forEach(([key, value]) => localStorage.setItem(key, value));
+            this.lastSaveError = null; return true;
+          } catch (err) {
+            this.lastSaveError = err; console.error('Gagal menyimpan database lokal:', err);
+            this.showToast('Gagal menyimpan data ke perangkat. Segera buat backup dan periksa ruang penyimpanan.', 'error'); return false;
+          }
         },
 
         showToast(message, type = 'success') {
@@ -4727,72 +4757,33 @@
 
         savePOSTransaction(autoPrint = false) {
           const st = Store.students.find(s => s.id === Store.pos.studentId);
-          if (!st) {
-            Store.showToast('Silakan pilih siswa terlebih dahulu.', 'error');
-            return;
+          if (!st) { Store.showToast('Silakan pilih siswa terlebih dahulu.', 'error'); return; }
+          if (!Store.pos.date || !/^\d{4}-\d{2}-\d{2}$/.test(Store.pos.date)) { Store.showToast('Tanggal pembayaran tidak valid.', 'error'); return; }
+          const selected = Object.entries(Store.pos.selectedItems).filter(([_, item]) => item.checked && Number(item.paidAmount) > 0);
+          if (!selected.length) { Store.showToast('Pilih minimal 1 item pembayaran dengan nominal lebih dari Rp 0.', 'error'); return; }
+          const summary = Store.getStudentSummary(st); const currentById = new Map(summary.itemBreakdowns.map(item => [item.paymentTypeId,item]));
+          let total = 0; const items = [];
+          for (const [ptId, item] of selected) {
+            const current = currentById.get(ptId); const amount = Number(item.paidAmount);
+            if (!Number.isSafeInteger(amount) || amount <= 0) { Store.showToast('Nominal pembayaran harus berupa rupiah bulat lebih dari nol.', 'error'); return; }
+            if (!current) { Store.showToast('Jenis tagihan tidak aktif atau tidak sesuai dengan siswa.', 'error'); return; }
+            if (amount > current.remainingAmount) { Store.showToast(`Nominal ${current.name} melebihi sisa tagihan ${formatRupiah(current.remainingAmount)}.`, 'error'); return; }
+            total += amount; items.push({ paymentTypeId: ptId, paymentTypeName: item.name || current.name, billAmount: current.billPrice, paidAmount: amount, status: amount >= current.remainingAmount ? 'Lunas' : 'Sebagian', notes: item.notes || '' });
           }
-
-          const checkedEntries = Object.entries(Store.pos.selectedItems).filter(([_, it]) => it.checked && it.paidAmount > 0);
-          if (checkedEntries.length === 0) {
-            Store.showToast('Pilih minimal 1 item pembayaran dengan nominal > 0.', 'error');
-            return;
-          }
-
-          let total = 0;
-          const items = checkedEntries.map(([ptId, it]) => {
-            total += it.paidAmount;
-            return {
-              paymentTypeId: ptId,
-              paymentTypeName: it.name,
-              billAmount: it.billPrice,
-              paidAmount: it.paidAmount,
-              status: it.paidAmount >= it.remainingAmount ? 'Lunas' : 'Sebagian',
-              notes: it.notes || ''
-            };
-          });
-
-          const cashRec = Number(Store.pos.cashReceived) || total;
-          const change = Math.max(0, cashRec - total);
-          const parentNameSaved = Store.pos.customParentName.trim() || st.parentName || st.father || st.mother || '';
-
-          const newTx = {
-            id: 'tx-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
-            receiptNo: Store.pos.receiptNo || Store.generateReceiptNo(),
-            date: Store.pos.date || getTodayISO(),
-            studentId: st.id,
-            studentName: st.name,
-            studentGender: st.gender,
-            studentClass: st.class || '1',
-            parentName: parentNameSaved,
-            items: items,
-            totalAmount: total,
-            cashReceived: cashRec,
-            changeAmount: change,
-            officer: Store.settings.officerName,
-            generalNotes: Store.pos.generalNotes || '',
-            createdAt: new Date().toISOString(),
-            isCorrected: false
-          };
-
-          Store.transactions.unshift(newTx);
-          Store.selectedReceiptId = newTx.id;
-          Store.selectedStudentId = st.id;
-          Store.receiptFilterStudentId = st.id;
-          if (!Store.multiReceiptSelectedIds.includes(newTx.id)) {
-            Store.multiReceiptSelectedIds.unshift(newTx.id);
-          }
-          Store.save();
+          const cash = Store.pos.cashReceived === '' || Store.pos.cashReceived === null ? total : Number(Store.pos.cashReceived);
+          if (!Number.isSafeInteger(cash) || cash < total) { Store.showToast('Uang diterima harus minimal sebesar total pembayaran.', 'error'); return; }
+          const parent = (Store.pos.customParentName || '').trim() || st.parentName || st.father || st.mother || '';
+          const receiptNo = Store.pos.receiptNo || Store.generateReceiptNo();
+          if (Store.transactions.some(tx => tx.receiptNo === receiptNo)) { Store.pos.receiptNo = Store.generateReceiptNo(); Store.showToast('Nomor kuitansi sudah pernah dipakai. Nomor baru dibuat, silakan simpan kembali.', 'warning'); Store.render(); return; }
+          const tx = { id: 'tx-' + Date.now() + '-' + Math.random().toString(36).substr(2,6), receiptNo, date: Store.pos.date || getTodayISO(), studentId: st.id, studentName: st.name, studentGender: st.gender, studentClass: st.class || '1', parentName: parent, items, totalAmount: total, cashReceived: cash, changeAmount: cash-total, officer: Store.settings.officerName, generalNotes: Store.pos.generalNotes || '', createdAt: new Date().toISOString(), isCorrected: false };
+          Store.transactions.unshift(tx);
+          if (!Store.save()) { Store.transactions = Store.transactions.filter(row => row.id !== tx.id); Store.showToast('Transaksi tidak tersimpan karena ruang penyimpanan bermasalah. Jangan anggap pembayaran sudah tercatat.', 'error'); return; }
+          Store.selectedReceiptId = tx.id; Store.selectedStudentId = st.id; Store.receiptFilterStudentId = st.id; if (!Store.multiReceiptSelectedIds.includes(tx.id)) Store.multiReceiptSelectedIds.unshift(tx.id);
           Store.showToast(`Pembayaran ${formatRupiah(total)} berhasil disimpan.`);
-
-          if (autoPrint) {
-            Store.navigate('receipt', { receiptId: newTx.id });
-          } else {
-            this.resetPOS();
-            Store.navigate('history');
-          }
+          if (autoPrint) Store.navigate('receipt', { receiptId: tx.id }); else { this.resetPOS(); Store.navigate('history'); }
         },
 
-        // --- HISTORY REAL-TIME SEARCH & TABLE DOM UPDATES ---
+                // --- HISTORY REAL-TIME SEARCH & TABLE DOM UPDATES ---
         onHistorySearchInput(val) {
           Store.historyFilter.search = val;
           this.updateHistoryTableDOM();
@@ -5479,61 +5470,42 @@
         },
 
         downloadBackupJSON() {
-          const data = {
-            version: '1.0',
-            appName: 'Sistem Pembayaran Kelas 1 SD',
-            date: new Date().toISOString(),
-            students: Store.students,
-            paymentTypes: Store.paymentTypes,
-            transactions: Store.transactions,
-            settings: Store.settings
-          };
-          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
-          const a = document.createElement('a');
-          a.setAttribute("href", dataStr);
-          a.setAttribute("download", `backup_pembayaran_kelas1_${getTodayISO()}.json`);
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          Store.showToast('File backup database JSON berhasil diunduh.');
+          try {
+            const data = { schema: 'keuangan-kelas-backup', version: '2.0', appName: 'Sistem Pembayaran Kelas 1 SD', exportedAt: new Date().toISOString(), counts: { students: Store.students.length, activeStudents: Store.students.filter(s => s.active).length, paymentTypes: Store.paymentTypes.length, transactions: Store.transactions.length }, students: Store.students, paymentTypes: Store.paymentTypes, transactions: Store.transactions, settings: Store.settings };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a');
+            a.href = url; a.download = `backup_keuangan_kelas1_${getTodayISO()}_${new Date().toTimeString().slice(0,8).replace(/:/g,'')}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500);
+            Store.showToast(`Backup berhasil dibuat: ${data.counts.students} siswa, ${data.counts.transactions} transaksi.`);
+          } catch (err) { console.error('Backup gagal:', err); Store.showToast('Backup gagal dibuat. Periksa ruang penyimpanan perangkat.', 'error'); }
         },
 
         handleRestoreFile(input) {
-          const file = input.files[0];
-          if (!file) return;
+          const file = input && input.files && input.files[0]; if (!file) return;
+          if (file.size > 50 * 1024 * 1024) { Store.showToast('File backup terlalu besar (maksimal 50 MB).', 'error'); input.value = ''; return; }
           const reader = new FileReader();
-          reader.onload = (e) => {
+          reader.onload = (event) => {
             try {
-              const data = JSON.parse(e.target.result);
-              if (!data.students || !data.paymentTypes) {
-                Store.showToast('Format backup JSON tidak valid.', 'error');
-                return;
-              }
-              Store.modal = {
-                type: 'CONFIRM',
-                title: 'Restore Database?',
-                message: `File backup berisi ${data.students.length} siswa dan ${(data.transactions || []).length} transaksi. Tindakan ini akan menimpa data sekarang.`,
-                confirmText: 'Ya, Restore Sekarang',
-                variant: 'danger',
+              const data = JSON.parse(event.target.result); const check = validateBackupData(data);
+              if (!check.ok) { Store.showToast(check.message + ' Data saat ini tidak diubah.', 'error'); return; }
+              const transactions = check.transactions; const money = transactions.reduce((sum, tx) => sum + Number(tx.totalAmount), 0);
+              const date = data.exportedAt || data.date || 'Waktu ekspor tidak tercatat';
+              Store.modal = { type: 'CONFIRM', title: 'Periksa dan Pulihkan Backup',
+                message: `File: ${escapeHtml(file.name)}. Tanggal backup: ${escapeHtml(date)}. Berisi ${data.students.length} siswa (${data.students.filter(s => s.active !== false).length} aktif), ${data.paymentTypes.length} jenis tagihan, dan ${transactions.length} transaksi senilai ${formatRupiah(money)}. Restore mengganti seluruh database pada perangkat ini. Unduh backup kondisi sekarang terlebih dahulu bila masih diperlukan.`,
+                confirmText: 'Pulihkan Data Ini', variant: 'danger',
                 onConfirm: () => {
-                  if (data.students) Store.students = data.students;
-                  if (data.paymentTypes) Store.paymentTypes = data.paymentTypes;
-                  if (data.transactions) Store.transactions = data.transactions;
-                  if (data.settings) Store.settings = data.settings;
-                  Store.save();
-                  Store.showToast('Database berhasil dipulihkan dari backup!');
+                  const old = { students: Store.students, paymentTypes: Store.paymentTypes, transactions: Store.transactions, settings: Store.settings };
+                  Store.students = data.students; Store.paymentTypes = data.paymentTypes; Store.transactions = transactions; Store.settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
+                  if (!Store.save()) { Store.students = old.students; Store.paymentTypes = old.paymentTypes; Store.transactions = old.transactions; Store.settings = old.settings; Store.save(); Store.render(); Store.showToast('Restore dibatalkan karena data tidak dapat disimpan.', 'error'); return; }
+                  Store.selectedReceiptId = null; Store.selectedStudentId = null; Store.multiReceiptSelectedIds = Store.transactions.map(tx => tx.id); Store.pos.receiptNo = Store.generateReceiptNo(); Store.modal = null;
+                  Store.showToast('Restore berhasil. Periksa kembali rekap sebelum digunakan.', 'success'); Store.render();
                 }
-              };
-              Store.render();
-            } catch(err) {
-              Store.showToast('Gagal membaca file JSON.', 'error');
-            }
+              }; Store.render();
+            } catch (err) { console.error('Restore gagal:', err); Store.showToast('File JSON rusak atau tidak dapat dibaca. Data sekarang tidak diubah.', 'error'); }
+            finally { input.value = ''; }
           };
-          reader.readAsText(file);
-          input.value = '';
+          reader.onerror = () => { Store.showToast('File tidak dapat dibaca. Silakan pilih file backup lain.', 'error'); input.value = ''; }; reader.readAsText(file);
         },
 
-        resetTransactionsOnly() {
+                resetTransactionsOnly() {
           Store.modal = {
             type: 'CONFIRM',
             title: 'Hapus Semua Transaksi Kelas?',
@@ -5565,7 +5537,7 @@
               Store.settings = DEFAULT_SETTINGS;
               Store.selectedReceiptId = null;
               Store.multiReceiptSelectedIds = [];
-              localStorage.clear();
+              ['app_students', 'app_payment_types', 'app_transactions', 'app_settings'].forEach(key => localStorage.removeItem(key));
               Store.save();
               Store.showToast('Aplikasi telah di-reset ke kondisi awal.', 'warning');
             }
