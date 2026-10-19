@@ -1,0 +1,39 @@
+name: Validate inline JavaScript
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - '.github/workflows/validate-inline-js.yml'
+  pull_request:
+    paths:
+      - 'index.html'
+      - '.github/workflows/validate-inline-js.yml'
+  workflow_dispatch:
+
+jobs:
+  syntax-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check inline JavaScript syntax
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const scripts = [...html.matchAll(/<script\\b(?![^>]*\\bsrc\\s*=)[^>]*>([\\s\\S]*?)<\\/script>/gi)];
+          if (!scripts.length) throw new Error('No inline script blocks found in index.html');
+          scripts.forEach((match, index) => {
+            const path = `/tmp/inline-script-${index}.js`;
+            fs.writeFileSync(path, match[1]);
+            execFileSync(process.execPath, ['--check', path], { stdio: 'inherit' });
+            console.log(`Syntax OK: inline script ${index + 1}`);
+          });
+          NODE
