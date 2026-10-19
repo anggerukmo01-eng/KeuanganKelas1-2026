@@ -36,6 +36,9 @@
   <!-- html2canvas for Real Image (PNG / JPG) Export -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
+  <!-- Supabase client for opt-in authenticated cloud sync -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <!-- Google Fonts: Plus Jakarta Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -337,6 +340,185 @@
         showTeacherSignature: true
       };
 
+      const CloudSync = {
+        client: null,
+        signature: '',
+        session: null,
+        user: null,
+        lastInviteCode: '',
+        config: { projectUrl: '', publicKey: '', workspaceId: '', workspaceName: '', role: '', revision: null },
+        loadConfig() {
+          try {
+            const saved = JSON.parse(localStorage.getItem('app_cloud_config') || '{}');
+            this.config = { ...this.config, ...saved };
+            if (this.config.revision !== null && this.config.revision !== undefined) this.config.revision = Number(this.config.revision);
+          } catch (err) { console.warn('Konfigurasi cloud lokal tidak dapat dibaca.', err); }
+          this.initClient();
+        },
+        persistConfig() {
+          try { localStorage.setItem('app_cloud_config', JSON.stringify(this.config)); return true; }
+          catch (err) { Store.showToast('Konfigurasi cloud tidak dapat disimpan pada perangkat ini.', 'error'); return false; }
+        },
+        initClient() {
+          const url = String(this.config.projectUrl || '').trim().replace(/\/+$/, '');
+          const key = String(this.config.publicKey || '').trim();
+          if (!url || !key) { this.client = null; this.signature = ''; return false; }
+          if (!/^https:\/\//i.test(url)) { this.client = null; this.signature = ''; return false; }
+          const signature = url + '|' + key;
+          if (this.client && this.signature === signature) return true;
+          if (!window.supabase || typeof window.supabase.createClient !== 'function') { this.client = null; return false; }
+          try {
+            this.client = window.supabase.createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+            this.signature = signature;
+            this.client.auth.onAuthStateChange((_event, session) => {
+              this.session = session || null; this.user = session && session.user ? session.user : null;
+              if (window.Store && typeof Store.render === 'function') Store.render();
+            });
+            this.client.auth.getSession().then(({ data, error }) => {
+              if (!error) { this.session = data.session || null; this.user = this.session && this.session.user ? this.session.user : null; if (window.Store && typeof Store.render === 'function') Store.render(); }
+            }).catch(err => console.warn('Status login cloud belum dapat dibaca.', err));
+            return true;
+          } catch (err) { this.client = null; this.signature = ''; console.error('Inisialisasi client cloud gagal.', err); return false; }
+        },
+        saveConfigurationFromForm() {
+          const url = (document.getElementById('cloud_project_url')?.value || '').trim().replace(/\/+$/, '');
+          const key = (document.getElementById('cloud_public_key')?.value || '').trim();
+          if (!url || !/^https:\/\//i.test(url)) { Store.showToast('Masukkan Project URL HTTPS Supabase yang valid.', 'error'); return; }
+          if (!key) { Store.showToast('Masukkan publishable key atau anon key Supabase. Jangan gunakan service_role/secret key.', 'error'); return; }
+          if (/^sb_secret_/i.test(key)) { Store.showToast('Kunci secret tidak boleh dipasang pada aplikasi publik. Gunakan publishable/anon key.', 'error'); return; }
+          try { const segment = key.split('.')[1]; if (segment) { const normalized = segment.replace(/-/g, '+').replace(/_/g, '/'); const payload = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='))); if (payload.role === 'service_role' || payload.role === 'supabase_admin') { Store.showToast('Kunci service_role tidak aman untuk aplikasi publik. Gunakan publishable/anon key.', 'error'); return; } } } catch (err) { if (key.startsWith('eyJ')) { Store.showToast('Format JWT key tidak dapat diperiksa. Pastikan memakai anon/publishable key, bukan service_role.', 'error'); return; } }
+          const changed = url !== this.config.projectUrl || key !== this.config.publicKey;
+          this.config.projectUrl = url; this.config.publicKey = key;
+          if (changed) { this.config.workspaceId = ''; this.config.workspaceName = ''; this.config.role = ''; this.config.revision = null; this.lastInviteCode = ''; this.client = null; this.signature = ''; }
+          if (!this.persistConfig()) return;
+          if (!this.initClient()) { Store.showToast('Client Supabase belum tersedia. Periksa koneksi internet dan muat ulang halaman.', 'error'); Store.render(); return; }
+          Store.showToast('Konfigurasi cloud tersimpan pada perangkat ini. Silakan masuk untuk melanjutkan.', 'success'); Store.render();
+        },
+        async requireClientAndSession() {
+          if (!this.client && !this.initClient()) { Store.showToast('Isi Project URL dan publishable/anon key Supabase, lalu simpan konfigurasi.', 'error'); return false; }
+          const result = await this.client.auth.getSession();
+          if (result.error) { Store.showToast('Tidak dapat memeriksa sesi cloud: ' + result.error.message, 'error'); return false; }
+          this.session = result.data.session || null; this.user = this.session && this.session.user ? this.session.user : null;
+          if (!this.session) { Store.showToast('Silakan masuk ke akun cloud terlebih dahulu.', 'error'); Store.render(); return false; }
+          return true;
+        },
+        async signUpFromForm() {
+          if (!this.client && !this.initClient()) { Store.showToast('Simpan konfigurasi Supabase terlebih dahulu.', 'error'); return; }
+          const email = (document.getElementById('cloud_email')?.value || '').trim();
+          const password = document.getElementById('cloud_password')?.value || '';
+          if (!email || password.length < 8) { Store.showToast('Isi email valid dan kata sandi minimal 8 karakter.', 'error'); return; }
+          const { data, error } = await this.client.auth.signUp({ email, password });
+          if (error) { Store.showToast('Pendaftaran gagal: ' + error.message, 'error'); return; }
+          this.session = data.session || null; this.user = data.user || null;
+          Store.showToast(data.session ? 'Akun berhasil dibuat dan masuk.' : 'Akun terdaftar. Periksa email untuk verifikasi sebelum masuk.', 'success'); Store.render();
+        },
+        async signInFromForm() {
+          if (!this.client && !this.initClient()) { Store.showToast('Simpan konfigurasi Supabase terlebih dahulu.', 'error'); return; }
+          const email = (document.getElementById('cloud_email')?.value || '').trim();
+          const password = document.getElementById('cloud_password')?.value || '';
+          if (!email || !password) { Store.showToast('Email dan kata sandi wajib diisi.', 'error'); return; }
+          const { data, error } = await this.client.auth.signInWithPassword({ email, password });
+          if (error) { Store.showToast('Login gagal: ' + error.message, 'error'); return; }
+          this.session = data.session || null; this.user = data.user || null; Store.showToast('Berhasil masuk ke cloud sebagai ' + email + '.', 'success'); Store.render();
+        },
+        async signOut() {
+          if (this.client) { const { error } = await this.client.auth.signOut(); if (error) { Store.showToast('Logout gagal: ' + error.message, 'error'); return; } }
+          this.session = null; this.user = null; Store.showToast('Berhasil keluar dari akun cloud.', 'success'); Store.render();
+        },
+        async createWorkspaceFromForm() {
+          if (!(await this.requireClientAndSession())) return;
+          const name = (document.getElementById('cloud_workspace_name')?.value || Store.settings.schoolName + ' - ' + Store.settings.className).trim();
+          if (!name) { Store.showToast('Isi nama sekolah/kelas untuk ruang cloud.', 'error'); return; }
+          const { data, error } = await this.client.rpc('create_app_workspace', { p_name: name });
+          if (error) { Store.showToast('Pembuatan ruang cloud gagal. Pastikan SQL backend sudah dipasang: ' + error.message, 'error'); return; }
+          const row = Array.isArray(data) ? data[0] : data;
+          if (!row || !row.workspace_id) { Store.showToast('Server tidak mengembalikan ID ruang cloud yang valid.', 'error'); return; }
+          this.config.workspaceId = row.workspace_id; this.config.workspaceName = row.workspace_name || name; this.config.role = 'owner'; this.config.revision = null; this.lastInviteCode = row.invite_code || '';
+          this.persistConfig();
+          Store.recordAudit('RUANG CLOUD DIBUAT', 'Cloud', row.workspace_id, this.config.workspaceName); Store.save();
+          Store.showToast('Ruang cloud dibuat. Simpan kode undangan untuk perangkat/pengguna lain.', 'success'); Store.render();
+        },
+        async joinWorkspaceFromForm() {
+          if (!(await this.requireClientAndSession())) return;
+          const code = (document.getElementById('cloud_join_code')?.value || '').trim();
+          if (!code) { Store.showToast('Masukkan kode undangan dari pemilik ruang.', 'error'); return; }
+          const { data, error } = await this.client.rpc('join_app_workspace', { p_invite_code: code });
+          if (error) { Store.showToast('Gagal bergabung. Periksa kode undangan atau hubungi pengelola: ' + error.message, 'error'); return; }
+          const row = Array.isArray(data) ? data[0] : data;
+          if (!row || !row.workspace_id) { Store.showToast('Server tidak mengembalikan ruang cloud yang valid.', 'error'); return; }
+          this.config.workspaceId = row.workspace_id; this.config.workspaceName = row.workspace_name || ''; this.config.role = row.member_role || 'teacher'; this.config.revision = null; this.lastInviteCode = '';
+          this.persistConfig(); Store.recordAudit('BERGABUNG KE RUANG CLOUD', 'Cloud', row.workspace_id, this.config.workspaceName); Store.save();
+          Store.showToast('Berhasil bergabung. Ambil data dari cloud terlebih dahulu sebelum mengirim data lokal.', 'success'); Store.render();
+        },
+        async createInviteFromForm() {
+          if (!(await this.requireClientAndSession())) return;
+          if (!this.config.workspaceId) { Store.showToast('Buat atau pilih ruang cloud terlebih dahulu.', 'error'); return; }
+          const { data, error } = await this.client.rpc('create_app_workspace_invite', { p_workspace_id: this.config.workspaceId, p_role: 'teacher', p_days: 30 });
+          if (error) { Store.showToast('Pembuatan undangan gagal: ' + error.message, 'error'); return; }
+          const row = Array.isArray(data) ? data[0] : data;
+          if (!row || !row.invite_code) { Store.showToast('Server tidak mengembalikan kode undangan.', 'error'); return; }
+          this.lastInviteCode = row.invite_code; Store.recordAudit('UNDANGAN CLOUD DIBUAT', 'Cloud', this.config.workspaceId, 'Undangan guru berlaku sampai ' + (row.expires_at || '-')); Store.save(); Store.render();
+          Store.showToast('Kode undangan baru siap. Bagikan secara pribadi, jangan dipasang di repositori publik.', 'success');
+        },
+        async getSnapshot() {
+          const { data, error } = await this.client.from('app_workspace_snapshots').select('workspace_id,revision,payload,updated_at,updated_by').eq('workspace_id', this.config.workspaceId).maybeSingle();
+          if (error) throw error; return data || null;
+        },
+        async pushLocalToCloud() {
+          if (!(await this.requireClientAndSession())) return;
+          if (!this.config.workspaceId) { Store.showToast('Buat ruang cloud atau bergabung menggunakan kode undangan.', 'error'); return; }
+          try {
+            const remote = await this.getSnapshot();
+            if (remote && (this.config.revision === null || this.config.revision === undefined)) { Store.showToast('Cloud sudah memiliki data. Tekan Ambil dari Cloud terlebih dahulu agar data tidak tertimpa tanpa sengaja.', 'warning'); return; }
+            if (!remote && this.config.revision !== null && this.config.revision !== undefined && Number(this.config.revision) > 0) { Store.showToast('Snapshot cloud yang pernah disinkronkan tidak ditemukan. Sinkronisasi dihentikan demi keamanan.', 'error'); return; }
+            if (remote && Number(remote.revision) !== Number(this.config.revision)) { Store.showToast('Konflik versi terdeteksi: data cloud berubah sejak sinkronisasi terakhir. Ambil data cloud dan periksa perbedaannya sebelum mengirim ulang.', 'warning'); return; }
+            const payload = { schema: 'keuangan-kelas-backup', version: '2.1', appName: 'Sistem Pembayaran Kelas 1 SD', exportedAt: new Date().toISOString(), students: Store.students, paymentTypes: Store.paymentTypes, transactions: Store.transactions, settings: Store.settings, auditLogs: Store.auditLogs || [] };
+            const expected = remote ? Number(remote.revision) : 0;
+            const { data, error } = await this.client.rpc('save_app_workspace_snapshot', { p_workspace_id: this.config.workspaceId, p_expected_revision: expected, p_payload: payload });
+            if (error) { Store.showToast('Cloud menolak pengiriman. ' + (error.message || 'Periksa akses dan versi data.'), 'error'); return; }
+            const row = Array.isArray(data) ? data[0] : data;
+            if (!row || row.revision === undefined) { Store.showToast('Server menyimpan data tetapi tidak mengembalikan revisi. Periksa status cloud sebelum mencoba lagi.', 'warning'); return; }
+            this.config.revision = Number(row.revision); this.persistConfig();
+            Store.recordAudit('KIRIM DATA KE CLOUD', 'Cloud', this.config.workspaceId, 'Snapshot tersimpan pada revisi ' + this.config.revision, Store.transactions.reduce((sum, tx) => sum + Number(tx.totalAmount || 0), 0)); Store.save();
+            Store.showToast('Data berhasil dikirim ke cloud. Revisi ' + this.config.revision + '.', 'success'); Store.render();
+          } catch (err) { Store.showToast('Sinkronisasi gagal: ' + err.message, 'error'); }
+        },
+        async pullCloudToLocal() {
+          if (!(await this.requireClientAndSession())) return;
+          if (!this.config.workspaceId) { Store.showToast('Pilih ruang cloud terlebih dahulu.', 'error'); return; }
+          try {
+            const remote = await this.getSnapshot();
+            if (!remote) { this.config.revision = 0; this.persistConfig(); Store.showToast('Belum ada snapshot cloud. Perangkat ini dapat mengirim data awal jika memang ingin menjadikannya sumber data bersama.', 'info'); Store.render(); return; }
+            const check = validateBackupData(remote.payload);
+            if (!check.ok) { Store.showToast('Data cloud tidak lolos validasi: ' + check.message, 'error'); return; }
+            const total = check.transactions.reduce((sum, tx) => sum + Number(tx.totalAmount || 0), 0);
+            Store.modal = { type: 'CONFIRM', title: 'Ambil Data dari Cloud?', message: 'Ruang: ' + escapeHtml(this.config.workspaceName || this.config.workspaceId) + '. Revisi cloud: ' + Number(remote.revision) + '. Berisi ' + remote.payload.students.length + ' siswa, ' + remote.payload.paymentTypes.length + ' jenis tagihan, dan ' + check.transactions.length + ' transaksi dengan total ' + formatRupiah(total) + '. Data lokal perangkat ini akan diganti. Buat backup lokal terlebih dahulu jika ada perubahan yang belum dikirim.', confirmText: 'Ganti dengan Data Cloud', variant: 'danger',
+              onConfirm: () => {
+                const old = { students: Store.students, paymentTypes: Store.paymentTypes, transactions: Store.transactions, settings: Store.settings, auditLogs: Store.auditLogs || [] };
+                Store.students = remote.payload.students; Store.paymentTypes = remote.payload.paymentTypes; Store.transactions = check.transactions; Store.settings = { ...DEFAULT_SETTINGS, ...(remote.payload.settings || {}) };
+                const logMap = new Map([...(remote.payload.auditLogs || []), ...(old.auditLogs || [])].map(log => [log.id, log]));
+                Store.auditLogs = Array.from(logMap.values()).sort((a,b) => new Date(b.at) - new Date(a.at)).slice(0,1500);
+                Store.recordAudit('AMBIL DATA DARI CLOUD', 'Cloud', this.config.workspaceId, 'Mengambil revisi ' + Number(remote.revision), total);
+                if (!Store.save()) { Store.students = old.students; Store.paymentTypes = old.paymentTypes; Store.transactions = old.transactions; Store.settings = old.settings; Store.auditLogs = old.auditLogs; Store.save(); Store.render(); Store.showToast('Pengambilan dibatalkan karena data tidak bisa disimpan secara lokal.', 'error'); return; }
+                this.config.revision = Number(remote.revision); this.persistConfig(); Store.selectedReceiptId = null; Store.selectedStudentId = null; Store.multiReceiptSelectedIds = Store.transactions.map(tx => tx.id); Store.pos.receiptNo = Store.generateReceiptNo(); Store.modal = null;
+                Store.showToast('Data cloud berhasil dimuat. Revisi ' + this.config.revision + '.', 'success'); Store.render();
+              }
+            }; Store.render();
+          } catch (err) { Store.showToast('Tidak dapat mengambil data cloud: ' + err.message, 'error'); }
+        },
+        async copyInviteCode() {
+          if (!this.lastInviteCode) { Store.showToast('Belum ada kode undangan untuk disalin.', 'warning'); return; }
+          try { await navigator.clipboard.writeText(this.lastInviteCode); Store.showToast('Kode undangan disalin. Bagikan secara pribadi.', 'success'); }
+          catch (err) { Store.showToast('Salin otomatis gagal. Salin kode yang tampil secara manual.', 'warning'); }
+        },
+        statusText() {
+          if (!this.config.projectUrl || !this.config.publicKey) return 'Belum dikonfigurasi';
+          if (!this.client) return 'Client belum siap';
+          if (!this.user) return 'Belum login';
+          if (!this.config.workspaceId) return 'Login, belum memilih ruang';
+          return 'Login aktif · ' + (this.config.workspaceName || 'Ruang cloud') + ' · peran ' + (this.config.role || 'anggota') + (this.config.revision !== null && this.config.revision !== undefined ? ' · revisi terakhir ' + this.config.revision : ' · belum pernah sinkron');
+        }
+      };
       const Store = {
         students: [],
         paymentTypes: [],
@@ -3908,6 +4090,37 @@
               </div>
             </div>
 
+            <!-- OPTIONAL CLOUD SYNC -->
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+              <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                <div><h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">Sinkronisasi Cloud Antarperangkat</h3><p class="text-xs text-slate-500 mt-1">Status: <strong>${escapeHtml(CloudSync.statusText())}</strong></p></div>
+                <span class="px-3 py-1 rounded-full text-[10px] font-bold ${CloudSync.user && CloudSync.config.workspaceId ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'}">${CloudSync.user && CloudSync.config.workspaceId ? 'SIAP SINKRON MANUAL' : 'KONFIGURASI DIPERLUKAN'}</span>
+              </div>
+              <p class="text-xs text-slate-600 dark:text-slate-300">Fitur ini bersifat opsional. Buat proyek Supabase, pasang skema SQL yang disertakan, lalu masukkan Project URL dan publishable/anon key. Gunakan hanya public key, bukan service_role atau secret key.</p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label class="block text-xs font-semibold text-slate-500 mb-1" for="cloud_project_url">Supabase Project URL</label><input id="cloud_project_url" value="${escapeHtml(CloudSync.config.projectUrl || '')}" placeholder="https://xxxx.supabase.co" class="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl" /></div>
+                <div><label class="block text-xs font-semibold text-slate-500 mb-1" for="cloud_public_key">Publishable / anon key</label><input id="cloud_public_key" type="password" value="${escapeHtml(CloudSync.config.publicKey || '')}" placeholder="sb_publishable_... atau anon JWT" class="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl" autocomplete="off" /></div>
+              </div>
+              <div><button onclick="AppActions.saveCloudConfiguration()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs">Simpan Konfigurasi Cloud</button><p class="text-[10px] text-slate-400 mt-1">Konfigurasi disimpan di browser ini, tidak dimasukkan ke backup kelas.</p></div>
+              <div class="border-t border-slate-100 dark:border-slate-700 pt-4 space-y-3">
+                <h4 class="font-bold text-sm text-slate-700 dark:text-slate-200">Akun Pengguna Cloud</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><label class="block text-xs font-semibold text-slate-500 mb-1" for="cloud_email">Email</label><input id="cloud_email" type="email" value="${escapeHtml(CloudSync.user?.email || '')}" placeholder="email guru" autocomplete="username" class="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl" /></div><div><label class="block text-xs font-semibold text-slate-500 mb-1" for="cloud_password">Kata sandi akun cloud</label><input id="cloud_password" type="password" placeholder="Minimal 8 karakter untuk akun baru" autocomplete="current-password" class="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl" /></div></div>
+                <div class="flex flex-wrap gap-2"><button onclick="AppActions.registerCloudAccount()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-lg text-xs">Daftar Akun</button><button onclick="AppActions.loginCloudAccount()" class="px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg text-xs">Masuk</button>${CloudSync.user ? '<button onclick="AppActions.logoutCloudAccount()" class="px-3 py-2 bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold rounded-lg text-xs">Keluar</button>' : ''}</div>
+              </div>
+              <div class="border-t border-slate-100 dark:border-slate-700 pt-4 space-y-3">
+                <h4 class="font-bold text-sm text-slate-700 dark:text-slate-200">Ruang Data Kelas</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><label class="block text-xs font-semibold text-slate-500 mb-1" for="cloud_workspace_name">Nama ruang baru</label><input id="cloud_workspace_name" value="${escapeHtml(CloudSync.config.workspaceName || (Store.settings.schoolName + ' - ' + Store.settings.className))}" placeholder="Nama sekolah - kelas" class="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl" /></div><div><label class="block text-xs font-semibold text-slate-500 mb-1" for="cloud_join_code">Kode undangan ruang</label><input id="cloud_join_code" placeholder="Tempel kode undangan" class="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl" /></div></div>
+                <div class="flex flex-wrap gap-2"><button onclick="AppActions.createCloudWorkspace()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-lg text-xs">Buat Ruang Baru</button><button onclick="AppActions.joinCloudWorkspace()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-lg text-xs">Gabung dengan Kode</button>${CloudSync.config.workspaceId ? '<button onclick="AppActions.createCloudInvite()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-lg text-xs">Buat Undangan Guru</button>' : ''}</div>
+                ${CloudSync.config.workspaceId ? '<p class="text-xs text-slate-500">Ruang: <strong>' + escapeHtml(CloudSync.config.workspaceName || CloudSync.config.workspaceId) + '</strong><br>ID: ' + escapeHtml(CloudSync.config.workspaceId) + '</p>' : ''}
+                ${CloudSync.lastInviteCode ? '<div class="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl"><label class="block text-xs font-bold text-amber-800 dark:text-amber-200 mb-1">Kode undangan pribadi, kedaluwarsa sesuai aturan backend</label><div class="flex gap-2"><input readonly value="' + escapeHtml(CloudSync.lastInviteCode) + '" class="min-w-0 flex-1 p-2 text-xs font-mono bg-white dark:bg-slate-800 border rounded-lg"/><button onclick="AppActions.copyCloudInvite()" class="px-3 py-2 bg-amber-600 text-white font-bold rounded-lg text-xs">Salin</button></div></div>' : ''}
+              </div>
+              <div class="border-t border-slate-100 dark:border-slate-700 pt-4 space-y-3">
+                <h4 class="font-bold text-sm text-slate-700 dark:text-slate-200">Sinkronkan Data</h4>
+                <p class="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-3">Kirim data hanya jika revisi cloud masih sama dengan revisi yang terakhir diambil. Jika ada perubahan dari perangkat lain, aplikasi akan menghentikan pengiriman dan meminta pemeriksaan konflik. Pengambilan cloud mengganti database lokal setelah konfirmasi.</p>
+                <div class="flex flex-wrap gap-2"><button onclick="AppActions.pullCloudData()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs">Ambil dari Cloud</button><button onclick="AppActions.pushCloudData()" class="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs">Kirim Data Lokal ke Cloud</button></div>
+                <p class="text-[10px] text-slate-400">Sinkronisasi dilakukan manual. Buat backup sebelum menggabungkan perangkat atau mengganti data lokal.</p>
+              </div>
+            </div>
             <!-- AUDIT TRAIL -->
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
               <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -5575,7 +5788,18 @@
           Store.showToast('Pengaturan sekolah berhasil disimpan.');
         },
 
-        exportAuditLogCSV() {
+        saveCloudConfiguration() { CloudSync.saveConfigurationFromForm(); },
+        registerCloudAccount() { CloudSync.signUpFromForm(); },
+        loginCloudAccount() { CloudSync.signInFromForm(); },
+        logoutCloudAccount() { CloudSync.signOut(); },
+        createCloudWorkspace() { CloudSync.createWorkspaceFromForm(); },
+        joinCloudWorkspace() { CloudSync.joinWorkspaceFromForm(); },
+        createCloudInvite() { CloudSync.createInviteFromForm(); },
+        copyCloudInvite() { CloudSync.copyInviteCode(); },
+        pullCloudData() { CloudSync.pullCloudToLocal(); },
+        pushCloudData() { CloudSync.pushLocalToCloud(); },
+
+                exportAuditLogCSV() {
           const logs = Store.auditLogs || [];
           const csvCell = value => '"' + String(value === null || value === undefined ? '' : value).replace(/"/g, '""') + '"';
           const rows = [['Waktu ISO', 'Petugas', 'Aksi', 'Jenis Data', 'ID Data', 'Ringkasan', 'Nominal (Rp)']];
@@ -5827,6 +6051,7 @@
         }
       });
 
+      CloudSync.loadConfig();
       Store.init();
       Store.render();
       if (Store.currentTab === 'history') AppActions.updateHistoryTableDOM();
