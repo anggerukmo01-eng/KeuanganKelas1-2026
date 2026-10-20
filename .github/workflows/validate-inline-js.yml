@@ -5,10 +5,20 @@ on:
     branches: [main]
     paths:
       - 'index.html'
+      - 'assets/**'
+      - 'tests/**'
+      - 'styles/**'
+      - 'package*.json'
+      - 'tailwind.config.cjs'
       - '.github/workflows/validate-inline-js.yml'
   pull_request:
     paths:
       - 'index.html'
+      - 'assets/**'
+      - 'tests/**'
+      - 'styles/**'
+      - 'package*.json'
+      - 'tailwind.config.cjs'
       - '.github/workflows/validate-inline-js.yml'
   workflow_dispatch:
 
@@ -37,3 +47,11 @@ jobs:
             console.log(`Syntax OK: inline script ${index + 1}`);
           });
           NODE
+      - name: Payment regression tests
+        run: node --test tests/payments.test.cjs
+      - name: Install CSS build tools
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify committed stylesheet is current
+        run: |
+          npm run build:css
+          git diff --exit-code -- assets/app.css

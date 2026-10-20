@@ -49,3 +49,38 @@ Fitur cloud pada aplikasi mendukung autentikasi email/kata sandi, ruang kelas, k
 ## Validasi
 
 Restore lokal memeriksa struktur data, ID ganda, data historis siswa, nomor kuitansi ganda, kecocokan total dan rincian item, serta struktur jejak audit. Endpoint simpan cloud memvalidasi ulang ukuran dan struktur snapshot di sisi server.
+## Ruang kerja guru — pembaruan 2.2
+
+- **Beranda** menampilkan penerimaan hari ini, siswa yang belum lunas, sisa tagihan, pencarian cepat, dan pembayaran terakhir.
+- **Cek Pembayaran** mencari siswa berdasarkan nama, NIS, ayah/ibu/wali; memfilter jenis biaya dan status; mengurutkan sisa terbesar; serta membuka pencatatan, rincian, atau riwayat siswa. Filter jenis biaya ikut diterapkan ketika membuka kasir.
+- **Riwayat** menyediakan tanggal awal–akhir, siswa, jenis biaya, kata kunci, tombol hari ini/bulan ini, dan ekspor CSV sesuai hasil filter. Nominal ekspor adalah **total utuh kuitansi**, termasuk bila kuitansi berisi beberapa jenis biaya.
+- Navigasi bawah tersedia pada HP/tablet. Riwayat menjadi kartu pada layar kecil. Mode terang/gelap tetap tersedia.
+- CSS sekarang disertakan di `assets/app.css`, sehingga tata letak tidak memerlukan Tailwind CDN. Ekspor XLSX, ekspor gambar, font Google, dan klien cloud masih memakai layanan eksternal; ini belum merupakan aplikasi offline penuh.
+
+### Ketepatan pencatatan
+
+Sisa dihitung per biaya sebelum dijumlahkan. Kelebihan bayar satu biaya tidak melunasi biaya lain. Tanggal pembayaran terakhir memakai tanggal paling baru, bukan urutan penyimpanan. Nomor kuitansi memakai urutan tertinggi yang tersimpan dan penanda urutan di pengaturan untuk mencegah pemakaian ulang setelah penghapusan biasa. Reset database atau restore cadangan lama dapat mengembalikan penanda ini.
+
+Siswa yang belum memiliki isian ayah tetap dipertahankan saat aplikasi dibuka. Formulir koreksi tidak menggambar ulang seluruh halaman ketika nominal diketik, wajib memiliki alasan koreksi, serta memvalidasi nominal dan uang diterima. Pencatatan, koreksi, dan penghapusan transaksi memulihkan keadaan sebelumnya bila penyimpanan gagal. Pembayaran melalui guru kelas dan guru lain dihitung per rincian transaksi untuk rekap bendahara.
+
+Status lunas/cicilan ditentukan dari nominal. Pencatatan pembebasan tagihan dan kewajiban per bulan belum tersedia sebagai model tersendiri. Jangan memakai nominal pembayaran untuk mencatat pembebasan.
+
+### Pengembangan dan pengujian
+
+```sh
+npm ci
+npm test
+npm run build:css
+python -m http.server 8000
+```
+
+Buka `http://localhost:8000`. Jalankan ulang `npm run build:css` setelah mengubah kelas Tailwind di HTML/JavaScript, lalu sertakan `assets/app.css` dalam commit. GitHub Pages menyajikan berkas statis yang sudah tersedia; tidak memerlukan build Node saat dibuka pengguna.
+
+Pengujian regresi mencakup saldo per biaya, tipe angka dari backup, pencarian, kombinasi filter, urutan kuitansi, cicilan, validasi tanggal/nominal, rollback saat penyimpanan gagal, koreksi, dan pemisahan penerima. Hasil pemeriksaan dan batasannya ada di [catatan validasi](docs/VALIDATION.md).
+
+
+### Foto Rapor Siswa Kelas 1
+
+Tagihan **Foto Rapor Siswa Kelas 1** sebesar **Rp30.000** berlaku untuk putra dan putri, satu kali pembayaran. Tersedia di Jenis Pembayaran, Cek Pembayaran, kasir, rincian siswa, kuitansi, dan rekap.
+
+Saat membuka data lama atau memulihkan backup/snapshot lama, aplikasi menambahkan tagihan ini satu kali jika belum ada. ID, nominal, dan transaksi yang sudah tersimpan tetap dipertahankan. Jenis dengan ID atau nama yang sama tidak digandakan; perubahan tarif, penonaktifan, atau penghapusan yang dilakukan setelah migrasi tetap dihormati. Penanda migrasi ikut disimpan bersama data/pengaturan saat penyimpanan berikutnya.

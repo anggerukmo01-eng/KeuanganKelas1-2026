@@ -1,0 +1,10 @@
+{
+  "name": "keuangan-kelas1-2026",
+  "version": "2.2.0",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i styles/tailwind.css -o assets/app.css --minify",
+    "test": "node --test tests/payments.test.cjs"
+  },
+  "devDependencies": { "tailwindcss": "3.4.17" }
+}
