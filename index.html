@@ -2,34 +2,12 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Sistem Pencatatan Pembayaran Siswa Kelas 1 SD</title>
   
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              50: '#f0fdf4',
-              100: '#dcfce7',
-              200: '#bbf7d0',
-              300: '#86efac',
-              400: '#4ade80',
-              500: '#22c55e',
-              600: '#16a34a',
-              700: '#15803d',
-              800: '#166534',
-              900: '#14532d',
-            }
-          }
-        }
-      }
-    }
-  </script>
+  <link rel="stylesheet" href="assets/app.css">
+  <link rel="stylesheet" href="assets/teacher-workspace.css">
+  <script src="assets/teacher-workspace.js"></script>
 
   <!-- SheetJS for Real Excel (.xlsx) Export -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -580,11 +558,9 @@
             const s = localStorage.getItem('app_students');
             if (s) {
               const parsed = JSON.parse(s);
-              if (parsed.length > 0 && !parsed[0].father) {
-                this.students = DEFAULT_STUDENTS;
-              } else {
-                this.students = parsed;
-              }
+              if (!Array.isArray(parsed)) throw new Error('Data siswa bukan daftar');
+              // Preserve existing IDs, edits and intentionally empty classes.
+              this.students = parsed.map(student => ({ active: true, ...student }));
             } else {
               this.students = DEFAULT_STUDENTS;
             }
@@ -704,8 +680,12 @@
           const m = String(today.getMonth() + 1).padStart(2, '0');
           const d = String(today.getDate()).padStart(2, '0');
           const prefix = `${this.settings.receiptPrefix || 'KW'}-${y}${m}${d}`;
-          const count = this.transactions.filter(t => t.receiptNo && t.receiptNo.startsWith(prefix)).length + 1;
-          return `${prefix}-${String(count).padStart(3, '0')}`;
+          const start = prefix + '-';
+          const highest = this.transactions.reduce((max, tx) => {
+            const suffix = String(tx.receiptNo || '').startsWith(start) ? String(tx.receiptNo).slice(start.length) : '';
+            return /^\d+$/.test(suffix) ? Math.max(max, Number(suffix)) : max;
+          }, Number(this.settings.receiptSequences?.[prefix]) || 0);
+          return `${prefix}-${String(highest + 1).padStart(3, '0')}`;
         },
 
         getStudentSummary(student) {
@@ -724,7 +704,7 @@
           let totalPaid = 0;
 
           const itemBreakdowns = applicableItems.map(item => {
-            const price = isPutri ? item.pricePutri : item.pricePutra;
+            const price = Number(isPutri ? item.pricePutri : item.pricePutra) || 0;
             totalTarget += price;
 
             let paidForItem = 0;
@@ -736,8 +716,8 @@
               if (tx.items) {
                 tx.items.forEach(txItem => {
                   if (txItem.paymentTypeId === item.id) {
-                    paidForItem += (txItem.paidAmount || 0);
-                    if (tx.date) lastDate = tx.date;
+                    paidForItem += Number(txItem.paidAmount) || 0;
+                    if (tx.date && (!lastDate || tx.date > lastDate)) lastDate = tx.date;
                     if (txItem.notes) notesList.push(txItem.notes);
                     if (txItem.status && txItem.status !== 'Lunas' && txItem.status !== 'Sebagian') {
                       specialStatus = txItem.status;
@@ -753,7 +733,7 @@
             let status = 'Belum Bayar';
             if (specialStatus) {
               status = specialStatus;
-            } else if (paidForItem >= price && price > 0) {
+            } else if (paidForItem >= price) {
               status = 'Lunas';
             } else if (paidForItem > 0 && paidForItem < price) {
               status = 'Sebagian';
@@ -772,9 +752,9 @@
             };
           });
 
-          const remainingTarget = Math.max(0, totalTarget - totalPaid);
+          const remainingTarget = itemBreakdowns.reduce((sum, item) => sum + item.remainingAmount, 0);
           let overallStatus = 'BELUM BAYAR';
-          if (totalPaid >= totalTarget && totalTarget > 0) {
+          if (remainingTarget === 0) {
             overallStatus = 'LUNAS';
           } else if (totalPaid > 0) {
             overallStatus = 'SEBAGIAN';
@@ -813,15 +793,14 @@
             let unpaidItems = [];
 
             sum.itemBreakdowns.forEach(ib => {
-              if (ib.paidAmount > 0) {
-                if (ib.status === 'Dibayar ke Guru Lain') {
-                  directTreasurer += ib.paidAmount;
-                  treasurerItems.push(`${ib.name}: ${formatRupiah(ib.paidAmount)}`);
-                } else {
-                  cashTeacher += ib.paidAmount;
-                  teacherItems.push(`${ib.name}: ${formatRupiah(ib.paidAmount)}`);
-                }
-              }
+              let itemTeacher = 0, itemTreasurer = 0;
+              sum.transactions.forEach(tx => (tx.items || []).filter(item => item.paymentTypeId === ib.paymentTypeId).forEach(item => {
+                if (item.status === 'Dibayar ke Guru Lain') itemTreasurer += Number(item.paidAmount) || 0;
+                else itemTeacher += Number(item.paidAmount) || 0;
+              }));
+              cashTeacher += itemTeacher; directTreasurer += itemTreasurer;
+              if (itemTeacher > 0) teacherItems.push(`${ib.name}: ${formatRupiah(itemTeacher)}`);
+              if (itemTreasurer > 0) treasurerItems.push(`${ib.name}: ${formatRupiah(itemTreasurer)}`);
               if (ib.remainingAmount > 0) {
                 unpaidItems.push(`${ib.name}: Kurang ${formatRupiah(ib.remainingAmount)}`);
               }
@@ -860,7 +839,7 @@
             totalDirectTreasurer,
             totalPaidAll: totalCashTeacher + totalDirectTreasurer,
             totalRemaining,
-            progressPercentage: totalClassTarget > 0 ? Math.round(((totalCashTeacher + totalDirectTreasurer) / totalClassTarget) * 100) : 0,
+            progressPercentage: totalClassTarget > 0 ? Math.round(((totalClassTarget - totalRemaining) / totalClassTarget) * 100) : 0,
             studentDeposits
           };
         },
@@ -882,12 +861,12 @@
             else belumBayarCount++;
           });
 
-          const totalClassRemaining = Math.max(0, totalClassTarget - totalClassPaid);
-          const progressPercentage = totalClassTarget > 0 ? Math.round((totalClassPaid / totalClassTarget) * 100) : 0;
+          const totalClassRemaining = activeStudents.reduce((total, student) => total + this.getStudentSummary(student).remainingTarget, 0);
+          const progressPercentage = totalClassTarget > 0 ? Math.round(((totalClassTarget - totalClassRemaining) / totalClassTarget) * 100) : 0;
 
           const todayStr = getTodayISO();
           const todayTxs = this.transactions.filter(t => t.date === todayStr);
-          const todayRevenue = todayTxs.reduce((acc, t) => acc + (t.totalAmount || 0), 0);
+          const todayRevenue = todayTxs.reduce((acc, t) => acc + Number(t.totalAmount || 0), 0);
 
           return {
             totalStudents: activeStudents.length,
@@ -941,7 +920,9 @@
         },
 
         attachDOMListeners() {
-          // Auto setup any specific DOM event bindings needed after render
+          // Refill dynamic lists after EVERY render (theme, modal close, navigation).
+          if (this.currentTab === 'history') AppActions.updateHistoryTableDOM();
+          if (this.currentTab === 'students') AppActions.updateStudentsTableDOM();
         }
       };
 
@@ -949,13 +930,14 @@
       function renderAppHTML() {
         const stats = Store.getClassStats();
         return `
-          <div class="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
+          <div class="app-shell flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
             ${renderSidebar(stats)}
             <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
               ${renderHeader()}
-              <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+              <main id="main-content" class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
                 ${renderCurrentTab(stats)}
               </main>
+              ${TeacherWorkspace.mobileNav()}
             </div>
             ${renderModals()}
             <div id="toast_container">
@@ -967,9 +949,10 @@
 
       function renderSidebar(stats) {
         const menuItems = [
-          { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-          { id: 'payment', label: 'Pembayaran (Kasir)', icon: 'creditCard', highlight: true },
-          { id: 'deposit', label: 'Setoran ke Bendahara (Bu Aenal)', icon: 'clipboardCheck', highlight: true },
+          { id: 'dashboard', label: 'Beranda', icon: 'dashboard' },
+          { id: 'check', label: 'Cek Pembayaran', icon: 'search' },
+          { id: 'payment', label: 'Catat Pembayaran', icon: 'creditCard', highlight: true },
+          { id: 'deposit', label: 'Rekap Bendahara', icon: 'clipboardCheck', highlight: true },
           { id: 'history', label: 'Riwayat Pembayaran', icon: 'history' },
           { id: 'billing', label: 'Daftar Tagihan', icon: 'billing' },
           { id: 'students', label: 'Data Siswa', icon: 'users', count: stats.totalStudents },
@@ -1052,7 +1035,8 @@
 
       function renderHeader() {
         const titles = {
-          dashboard: 'Dashboard Pembayaran',
+          dashboard: 'Beranda Guru',
+          check: 'Cek Pembayaran Siswa',
           payment: 'Kasir Pembayaran Siswa',
           deposit: 'Laporan Setoran Keuangan ke Bendahara Buku (Bu Aenal)',
           history: 'Riwayat Transaksi',
@@ -1068,7 +1052,7 @@
         return `
           <header class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 sm:px-6 py-3 flex items-center justify-between no-print sticky top-0 z-20">
             <div class="flex items-center gap-3">
-              <button onclick="AppActions.toggleSidebar(true)" class="lg:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">
+              <button onclick="AppActions.toggleSidebar(true)" aria-label="Buka semua menu" class="lg:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">
                 ${getSvgIcon('menu', 'w-6 h-6')}
               </button>
               <div>
@@ -1079,7 +1063,7 @@
 
             <div class="flex items-center gap-2 sm:gap-3">
               <button 
-                onclick="AppActions.openGlobalSearch()"
+                onclick="AppActions.openGlobalSearch()" aria-label="Cari siswa atau kuitansi"
                 class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 text-xs hover:border-brand-500 transition-colors"
               >
                 ${getSvgIcon('search', 'w-4 h-4')}
@@ -1090,7 +1074,7 @@
               <button
                 onclick="AppActions.toggleDarkMode()"
                 class="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                title="Toggle Mode Gelap / Terang"
+                title="Ganti tampilan terang / gelap" aria-label="Ganti tampilan terang / gelap"
               >
                 ${getSvgIcon(Store.settings.darkMode ? 'sun' : 'moon', 'w-5 h-5')}
               </button>
@@ -1101,7 +1085,8 @@
 
       function renderCurrentTab(stats) {
         switch (Store.currentTab) {
-          case 'dashboard': return renderDashboard(stats);
+          case 'dashboard': return TeacherWorkspace.dashboard(stats);
+          case 'check': return TeacherWorkspace.render();
           case 'payment': return renderPaymentPOS();
           case 'deposit': return renderDepositReport(stats);
           case 'history': return renderHistory();
@@ -1112,192 +1097,10 @@
           case 'receipt': return renderReceipt();
           case 'reports': return renderReports(stats);
           case 'settings': return renderSettings();
-          default: return renderDashboard(stats);
+          default: return TeacherWorkspace.dashboard(stats);
         }
       }
 
-      function renderDashboard(stats) {
-        const recentTxs = [...Store.transactions].sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date)).slice(0, 5);
-        const depSum = Store.getDepositSummary();
-
-        return `
-          <div class="space-y-6">
-            <div class="bg-gradient-to-r from-brand-700 via-emerald-600 to-teal-600 rounded-2xl p-6 text-white shadow-lg shadow-emerald-700/15 flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <div class="inline-flex items-center gap-2 px-3 py-1 bg-white/20 rounded-full text-xs font-semibold mb-2 backdrop-blur-sm">
-                  <span>🔔 Tahun Ajaran ${escapeHtml(Store.settings.academicYear)}</span>
-                </div>
-                <h2 class="text-2xl font-bold">Selamat Datang di Administrasi Kelas 1</h2>
-                <p class="text-emerald-100 text-sm mt-1 max-w-xl">
-                  Kelola pencatatan pembayaran seragam, atribut, LKS, Buku 7 KIH, dan setoran ke Bendahara Buku (${escapeHtml(Store.settings.bookTreasurerName || 'Bu Aenal')}) secara transparan.
-                </p>
-              </div>
-
-              <div class="flex flex-wrap gap-2">
-                <button
-                  onclick="AppActions.navigate('payment')"
-                  class="px-4 py-2.5 bg-white text-emerald-800 font-bold rounded-xl shadow hover:bg-emerald-50 transition-all text-sm flex items-center gap-2"
-                >
-                  ${getSvgIcon('plus', 'w-4 h-4 text-emerald-600')}
-                  <span>Transaksi Baru</span>
-                </button>
-                <button
-                  onclick="AppActions.navigate('deposit')"
-                  class="px-4 py-2.5 bg-emerald-800/50 hover:bg-emerald-800/80 text-white font-medium rounded-xl transition-all text-sm flex items-center gap-2 border border-white/20"
-                >
-                  ${getSvgIcon('clipboardCheck', 'w-4 h-4')}
-                  <span>Setoran ke Bu Aenal</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- STAT CARDS -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-              ${renderStatCard('Jumlah Siswa', `${stats.totalStudents} Siswa`, `${stats.lunasCount} Lunas • ${stats.sebagianCount} Sebagian`, 'users', 'emerald')}
-              ${renderStatCard('Uang di Guru Kelas', formatRupiah(depSum.totalCashTeacher), 'Siap setor ke Bu Aenal', 'creditCard', 'emerald')}
-              ${renderStatCard('Uang di Bu Aenal', formatRupiah(depSum.totalDirectTreasurer), 'Bayar ke Guru Lain', 'bank', 'blue')}
-              ${renderStatCard('Siswa Belum Lunas', `${depSum.belumLunasCount} Siswa`, `Kurang: ${formatRupiah(depSum.totalRemaining)}`, 'alertCircle', 'rose')}
-              ${renderStatCard('Total Terkumpul', formatRupiah(depSum.totalPaidAll), `${depSum.progressPercentage}% kewajiban kelas`, 'checkCircle', 'indigo')}
-              ${renderStatCard('Total Target Kelas', formatRupiah(depSum.totalClassTarget), 'Kewajiban 20 siswa', 'billing', 'amber')}
-            </div>
-
-            <!-- CHARTS & RECENT TRANSACTIONS -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between">
-                <div>
-                  <h3 class="font-bold text-slate-800 dark:text-slate-100 text-base mb-1">Status Keuangan & Setoran</h3>
-                  <p class="text-xs text-slate-500 dark:text-slate-400 mb-6">Distribusi uang penerimaan Kelas 1</p>
-
-                  <div class="flex items-baseline gap-3 mb-4">
-                    <span class="text-4xl font-extrabold text-brand-600 dark:text-brand-400">${depSum.progressPercentage}%</span>
-                    <span class="text-xs text-slate-500 dark:text-slate-400">dari total ${formatRupiah(depSum.totalClassTarget)}</span>
-                  </div>
-
-                  <div class="h-4 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden flex mb-6">
-                    <div style="width: ${(depSum.totalCashTeacher / (depSum.totalClassTarget || 1)) * 100}%" class="bg-emerald-500 h-full" title="Uang di Guru Kelas"></div>
-                    <div style="width: ${(depSum.totalDirectTreasurer / (depSum.totalClassTarget || 1)) * 100}%" class="bg-sky-500 h-full" title="Uang di Bendahara Buku"></div>
-                    <div style="width: ${(depSum.totalRemaining / (depSum.totalClassTarget || 1)) * 100}%" class="bg-rose-500 h-full" title="Sisa Belum Bayar"></div>
-                  </div>
-
-                  <div class="space-y-3 text-xs">
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
-                        <span class="text-slate-600 dark:text-slate-300">Uang di Guru Kelas (Setoran)</span>
-                      </div>
-                      <span class="font-bold text-slate-800 dark:text-slate-200">
-                        ${formatRupiah(depSum.totalCashTeacher)}
-                      </span>
-                    </div>
-
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full bg-sky-500 inline-block"></span>
-                        <span class="text-slate-600 dark:text-slate-300">Uang di Bendahara (${escapeHtml(Store.settings.bookTreasurerName || 'Bu Aenal')})</span>
-                      </div>
-                      <span class="font-bold text-slate-800 dark:text-slate-200">
-                        ${formatRupiah(depSum.totalDirectTreasurer)}
-                      </span>
-                    </div>
-
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full bg-rose-500 inline-block"></span>
-                        <span class="text-slate-600 dark:text-slate-300">Sisa Tunggakan Belum Bayar</span>
-                      </div>
-                      <span class="font-bold text-rose-600 dark:text-rose-400">
-                        ${formatRupiah(depSum.totalRemaining)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="pt-6 mt-6 border-t border-slate-100 dark:border-slate-700">
-                  <button
-                    onclick="AppActions.navigate('deposit')"
-                    class="w-full py-2.5 px-4 rounded-xl bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 text-xs font-bold text-brand-700 dark:text-brand-300 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <span>Buka Berita Acara Setoran</span>
-                    ${getSvgIcon('clipboardCheck', 'w-4 h-4')}
-                  </button>
-                </div>
-              </div>
-
-              <div class="lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between">
-                <div>
-                  <div class="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 class="font-bold text-slate-800 dark:text-slate-100 text-base">Pembayaran Terbaru</h3>
-                      <p class="text-xs text-slate-500 dark:text-slate-400">Transaksi terakhir yang dicatat ke sistem</p>
-                    </div>
-                    <button
-                      onclick="AppActions.navigate('history')"
-                      class="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1"
-                    >
-                      <span>Semua Transaksi</span>
-                    </button>
-                  </div>
-
-                  ${recentTxs.length === 0 ? `
-                    <div class="py-12 text-center text-slate-400 dark:text-slate-500">
-                      ${getSvgIcon('receipt', 'w-12 h-12 mx-auto mb-3 opacity-30')}
-                      <p class="text-sm font-medium">Belum ada transaksi pembayaran.</p>
-                      <p class="text-xs mt-1">Klik tombol 'Transaksi Baru' untuk mencatat pembayaran pertama.</p>
-                      <button
-                        onclick="AppActions.navigate('payment')"
-                        class="mt-4 px-4 py-2 bg-brand-600 text-white text-xs font-semibold rounded-xl hover:bg-brand-700 transition-colors inline-flex items-center gap-1.5"
-                      >
-                        ${getSvgIcon('plus', 'w-3.5 h-3.5')}
-                        <span>Buat Transaksi Sekarang</span>
-                      </button>
-                    </div>
-                  ` : `
-                    <div class="overflow-x-auto">
-                      <table class="w-full text-left text-sm">
-                        <thead>
-                          <tr class="border-b border-slate-100 dark:border-slate-700 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                            <th class="pb-3">No. Kwitansi</th>
-                            <th class="pb-3">Siswa</th>
-                            <th class="pb-3">Tanggal</th>
-                            <th class="pb-3 text-right">Nominal</th>
-                            <th class="pb-3 text-center">Aksi</th>
-                          </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">
-                          ${recentTxs.map(tx => `
-                            <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                              <td class="py-3 font-mono text-xs font-semibold text-brand-600 dark:text-brand-400">${escapeHtml(tx.receiptNo)}</td>
-                              <td class="py-3 font-medium text-slate-800 dark:text-slate-200">${escapeHtml(tx.studentName)}</td>
-                              <td class="py-3 text-xs text-slate-500 dark:text-slate-400">${formatDateIndo(tx.date)}</td>
-                              <td class="py-3 text-right font-bold text-slate-800 dark:text-slate-100">${formatRupiah(tx.totalAmount)}</td>
-                              <td class="py-3 text-center">
-                                <div class="flex items-center justify-center gap-1">
-                                  <button
-                                    onclick="AppActions.navigate('receipt', { receiptId: '${tx.id}' })"
-                                    class="px-2.5 py-1 text-xs bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-brand-600 hover:text-white transition-colors"
-                                  >
-                                    Kwitansi
-                                  </button>
-                                  <button
-                                    onclick="AppActions.openEditTransaction('${tx.id}')"
-                                    class="px-2.5 py-1 text-xs bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 rounded-lg hover:bg-amber-600 hover:text-white transition-colors font-medium"
-                                  >
-                                    Edit
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          `).join('')}
-                        </tbody>
-                      </table>
-                    </div>
-                  `}
-                </div>
-              </div>
-            </div>
-          </div>
-        `;
-      }
       function renderStatCard(title, value, sub, icon, color) {
         const colorMap = {
           emerald: 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50',
@@ -1455,7 +1258,7 @@
                 </div>
 
                 <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                  Harga tagihan disesuaikan otomatis untuk siswa <span class="font-semibold text-slate-700 dark:text-slate-200">${student.gender}</span>.
+                  Untuk cicilan, isi nominal yang benar-benar dibayar pada masing-masing biaya. Status lunas dihitung otomatis. Tarif untuk siswa <span class="font-semibold text-slate-700 dark:text-slate-200">${student.gender}</span>.
                 </p>
 
                 <div class="space-y-3" id="pos_items_list">
@@ -1538,16 +1341,13 @@
 
                         <div id="pos_item_extra_${ptId}" class="${item.checked ? '' : 'hidden'} mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/60 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                           <div>
-                            <label class="text-[11px] text-slate-400 block mb-1">Status / Kondisi Khusus:</label>
+                            <label class="text-[11px] text-slate-400 block mb-1">Penerima pembayaran:</label>
                             <select
                               onchange="AppActions.onPOSItemStatusSelect('${ptId}', this.value)"
                               class="w-full py-1.5 px-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200"
                             >
-                              <option value="Sudah Dibayar" ${item.status === 'Sudah Dibayar' ? 'selected' : ''}>Sudah Dibayar</option>
+                              <option value="Sudah Dibayar" ${item.status === 'Sudah Dibayar' ? 'selected' : ''}>Guru kelas (status dihitung otomatis)</option>
                               <option value="Dibayar ke Guru Lain" ${item.status === 'Dibayar ke Guru Lain' ? 'selected' : ''}>Dibayar ke Guru Lain (Olahraga/Agama/Wali)</option>
-                              <option value="Dibayar Sebagian" ${item.status === 'Dibayar Sebagian' ? 'selected' : ''}>Dibayar Sebagian (Cicil)</option>
-                              <option value="Gratis/Pembebasan" ${item.status === 'Gratis/Pembebasan' ? 'selected' : ''}>Gratis / Pembebasan</option>
-                              <option value="Koreksi" ${item.status === 'Koreksi' ? 'selected' : ''}>Koreksi Pembayaran</option>
                             </select>
                           </div>
                           <div>
@@ -1725,7 +1525,7 @@
                 <div class="lg:col-span-2 relative">
                   <input 
                     type="text"
-                    id="history_search_input"
+                    id="history_search_input" aria-label="Cari pembayaran"
                     placeholder="Cari no. kwitansi, siswa, orang tua, item..."
                     value="${escapeHtml(Store.historyFilter.search)}"
                     oninput="AppActions.onHistorySearchInput(this.value)"
@@ -1738,7 +1538,7 @@
 
                 <div>
                   <select
-                    id="history_student_filter"
+                    id="history_student_filter" aria-label="Filter siswa"
                     onchange="Store.historyFilter.studentId = this.value; AppActions.updateHistoryTableDOM();"
                     class="w-full p-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl dark:text-white"
                   >
@@ -1752,7 +1552,7 @@
                 <div>
                   <input 
                     type="date"
-                    id="history_start_date"
+                    id="history_start_date" aria-label="Dari tanggal"
                     value="${Store.historyFilter.startDate}"
                     onchange="Store.historyFilter.startDate = this.value; AppActions.updateHistoryTableDOM();"
                     class="w-full p-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl dark:text-white"
@@ -1761,7 +1561,7 @@
 
                 <div>
                   <select
-                    id="history_sort_filter"
+                    id="history_sort_filter" aria-label="Urutkan transaksi"
                     onchange="Store.historyFilter.sort = this.value; AppActions.updateHistoryTableDOM();"
                     class="w-full p-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl dark:text-white font-medium"
                   >
@@ -1772,9 +1572,17 @@
               </div>
             </div>
 
+            <div class="tw-history-tools no-print">
+              <label>Sampai tanggal<input type="date" id="history_end_date" value="${escapeHtml(Store.historyFilter.endDate)}" onchange="Store.historyFilter.endDate=this.value; AppActions.updateHistoryTableDOM()"></label>
+              <label>Jenis pembayaran<select id="history_type_filter" onchange="Store.historyFilter.paymentTypeId=this.value; AppActions.updateHistoryTableDOM()"><option value="ALL">Semua jenis</option>${TeacherWorkspace.typeOptions(Store.historyFilter.paymentTypeId)}</select></label>
+              <button class="tw-button" onclick="TeacherWorkspace.historyRange('today')">Hari ini</button>
+              <button class="tw-button" onclick="TeacherWorkspace.historyRange('month')">Bulan ini</button>
+              <button class="tw-button" onclick="TeacherWorkspace.resetHistory()">Reset filter</button>
+              <button class="tw-button tw-primary" onclick="TeacherWorkspace.exportHistory()">Unduh hasil CSV</button>
+            </div>
             <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
               <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs">
+                <table id="history_table" class="w-full text-left text-xs">
                   <thead class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider">
                     <tr>
                       <th class="py-3.5 px-4">No. Kwitansi</th>
@@ -1824,7 +1632,7 @@
           if (Store.billingFilter.search) {
             const q = Store.billingFilter.search.toLowerCase().trim();
             const matchName = sum.student.name.toLowerCase().includes(q);
-            const matchNis = sum.student.nis && sum.student.nis.toLowerCase().includes(q);
+            const matchNis = sum.student.nis && String(sum.student.nis).toLowerCase().includes(q);
             const matchParent = (sum.student.parentName && sum.student.parentName.toLowerCase().includes(q)) ||
                                 (sum.student.father && sum.student.father.toLowerCase().includes(q)) ||
                                 (sum.student.mother && sum.student.mother.toLowerCase().includes(q));
@@ -1855,7 +1663,7 @@
           targetSum += l.totalTarget;
           paidSum += l.totalPaid;
         });
-        const remainingSum = Math.max(0, targetSum - paidSum);
+        const remainingSum = studentLedgers.reduce((total, ledger) => total + ledger.remainingTarget, 0);
 
         return `
           <div class="space-y-6">
@@ -4538,7 +4346,7 @@
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800">
                     <div>
                       <span class="text-slate-500 dark:text-slate-400 block mb-0.5">Total Nominal Transaksi:</span>
-                      <span class="text-xl font-black text-brand-700 dark:text-brand-300">${formatRupiah(total)}</span>
+                      <span id="correction-live-total" aria-live="polite" class="text-xl font-black text-brand-700 dark:text-brand-300">${formatRupiah(total)}</span>
                     </div>
                     <div>
                       <label class="text-slate-500 dark:text-slate-400 block mb-0.5 font-semibold">Uang Diterima dari Ortu (Rp):</label>
@@ -4549,7 +4357,7 @@
                         oninput="AppActions.onEditTxCashReceived(this.value)"
                         class="w-full p-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg font-extrabold text-sm" 
                       />
-                      <div class="text-[11px] mt-1 font-semibold ${isShortage ? 'text-rose-600' : 'text-emerald-700'}">
+                      <div id="correction-live-change" class="text-[11px] mt-1 font-semibold ${isShortage ? 'text-rose-600' : 'text-emerald-700'}">
                         ${isShortage ? 'Kurang: ' : 'Kembalian: '}${formatRupiah(Math.abs(change))}
                       </div>
                     </div>
@@ -4702,7 +4510,7 @@
             Store.showToast(`Siswa "${st.name}" belum memiliki riwayat pembayaran untuk di-reset.`, 'info');
             return;
           }
-          const totalAmount = studentTxs.reduce((acc, t) => acc + (t.totalAmount || 0), 0);
+          const totalAmount = studentTxs.reduce((acc, t) => acc + Number(t.totalAmount || 0), 0);
           Store.modal = {
             type: 'CONFIRM',
             title: 'Reset Pembayaran Siswa?',
@@ -4814,8 +4622,8 @@
             container.innerHTML = '<div class="p-6 text-center text-slate-400">Ketik nama siswa atau no kwitansi...</div>';
             return;
           }
-          const q = val.toLowerCase();
-          const matchedStudents = Store.students.filter(s => s.name.toLowerCase().includes(q) || (s.nis && s.nis.includes(q)) || (s.parentName && s.parentName.toLowerCase().includes(q))).map(s => `
+          const q = val.trim().toLocaleLowerCase('id-ID');
+          const matchedStudents = Store.students.filter(s => TeacherWorkspace.matchesStudent(s, q)).map(s => `
             <div onclick="AppActions.closeModal(); AppActions.navigate('student-detail', { studentId: '${s.id}' })" class="p-3.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer flex items-center justify-between">
               <div>
                 <div class="font-bold text-slate-800 dark:text-slate-100">${escapeHtml(s.name)}</div>
@@ -4885,7 +4693,7 @@
             if (!s.active) return false;
             if (!q) return true;
             return s.name.toLowerCase().includes(q) || 
-                   (s.nis && s.nis.includes(q)) || 
+                   (s.nis && String(s.nis).toLowerCase().includes(q)) ||
                    (s.parentName && s.parentName.toLowerCase().includes(q)) ||
                    (s.father && s.father.toLowerCase().includes(q)) ||
                    (s.mother && s.mother.toLowerCase().includes(q)) ||
@@ -4923,6 +4731,9 @@
         selectPOSStudent(id) {
           const st = Store.students.find(s => s.id === id);
           if (!st) return;
+          Store.pos.generalNotes = '';
+          Store.pos.allowPaidOverride = false;
+          Store.pos.receiptNo = Store.generateReceiptNo();
           Store.pos.studentId = st.id;
           Store.pos.studentSearch = st.name;
           Store.pos.customParentName = st.parentName || st.father || st.mother || '';
@@ -4931,7 +4742,7 @@
           const summary = Store.getStudentSummary(st);
           const newSelected = {};
           summary.itemBreakdowns.forEach(item => {
-            const isLunas = item.status === 'Lunas';
+            const isLunas = item.remainingAmount === 0;
             newSelected[item.paymentTypeId] = {
               checked: !isLunas,
               paidAmount: item.remainingAmount,
@@ -5083,8 +4894,8 @@
 
         savePOSTransaction(autoPrint = false) {
           const st = Store.students.find(s => s.id === Store.pos.studentId);
-          if (!st) { Store.showToast('Silakan pilih siswa terlebih dahulu.', 'error'); return; }
-          if (!Store.pos.date || !/^\d{4}-\d{2}-\d{2}$/.test(Store.pos.date)) { Store.showToast('Tanggal pembayaran tidak valid.', 'error'); return; }
+          if (!st || !st.active) { Store.showToast('Silakan pilih siswa aktif terlebih dahulu.', 'error'); return; }
+          if (!Store.pos.date || !TeacherWorkspace.validDate(Store.pos.date)) { Store.showToast('Tanggal pembayaran tidak valid.', 'error'); return; }
           const selected = Object.entries(Store.pos.selectedItems).filter(([_, item]) => item.checked && Number(item.paidAmount) > 0);
           if (!selected.length) { Store.showToast('Pilih minimal 1 item pembayaran dengan nominal lebih dari Rp 0.', 'error'); return; }
           const summary = Store.getStudentSummary(st); const currentById = new Map(summary.itemBreakdowns.map(item => [item.paymentTypeId,item]));
@@ -5094,7 +4905,7 @@
             if (!Number.isSafeInteger(amount) || amount <= 0) { Store.showToast('Nominal pembayaran harus berupa rupiah bulat lebih dari nol.', 'error'); return; }
             if (!current) { Store.showToast('Jenis tagihan tidak aktif atau tidak sesuai dengan siswa.', 'error'); return; }
             if (amount > current.remainingAmount) { Store.showToast(`Nominal ${current.name} melebihi sisa tagihan ${formatRupiah(current.remainingAmount)}.`, 'error'); return; }
-            total += amount; items.push({ paymentTypeId: ptId, paymentTypeName: item.name || current.name, billAmount: current.billPrice, paidAmount: amount, status: amount >= current.remainingAmount ? 'Lunas' : 'Sebagian', notes: item.notes || '' });
+            total += amount; items.push({ paymentTypeId: ptId, paymentTypeName: item.name || current.name, billAmount: current.billPrice, paidAmount: amount, status: item.status === 'Dibayar ke Guru Lain' ? item.status : (amount >= current.remainingAmount ? 'Lunas' : 'Sebagian'), notes: item.notes || '' });
           }
           const cash = Store.pos.cashReceived === '' || Store.pos.cashReceived === null ? total : Number(Store.pos.cashReceived);
           if (!Number.isSafeInteger(cash) || cash < total) { Store.showToast('Uang diterima harus minimal sebesar total pembayaran.', 'error'); return; }
@@ -5102,12 +4913,17 @@
           const receiptNo = Store.pos.receiptNo || Store.generateReceiptNo();
           if (Store.transactions.some(tx => tx.receiptNo === receiptNo)) { Store.pos.receiptNo = Store.generateReceiptNo(); Store.showToast('Nomor kuitansi sudah pernah dipakai. Nomor baru dibuat, silakan simpan kembali.', 'warning'); Store.render(); return; }
           const tx = { id: 'tx-' + Date.now() + '-' + Math.random().toString(36).substr(2,6), receiptNo, date: Store.pos.date || getTodayISO(), studentId: st.id, studentName: st.name, studentGender: st.gender, studentClass: st.class || '1', parentName: parent, items, totalAmount: total, cashReceived: cash, changeAmount: cash-total, officer: Store.settings.officerName, generalNotes: Store.pos.generalNotes || '', createdAt: new Date().toISOString(), isCorrected: false };
+          const previousAudit = [...Store.auditLogs];
+          const previousSequences = { ...(Store.settings.receiptSequences || {}) };
+          const sequenceMatch = receiptNo.match(/^(.*)-(\d+)$/);
+          if (sequenceMatch) Store.settings.receiptSequences = { ...previousSequences, [sequenceMatch[1]]: Math.max(Number(previousSequences[sequenceMatch[1]]) || 0, Number(sequenceMatch[2])) };
           Store.transactions.unshift(tx);
           Store.recordAudit('PEMBAYARAN DICATAT', 'Transaksi', tx.id, 'Kuitansi ' + tx.receiptNo + ' | ' + tx.studentName, tx.totalAmount);
-          if (!Store.save()) { Store.transactions = Store.transactions.filter(row => row.id !== tx.id); Store.showToast('Transaksi tidak tersimpan karena ruang penyimpanan bermasalah. Jangan anggap pembayaran sudah tercatat.', 'error'); return; }
+          if (!Store.save()) { Store.auditLogs = previousAudit; Store.settings.receiptSequences = previousSequences; Store.transactions = Store.transactions.filter(row => row.id !== tx.id); Store.showToast('Transaksi tidak tersimpan karena ruang penyimpanan bermasalah. Jangan anggap pembayaran sudah tercatat.', 'error'); return; }
           Store.selectedReceiptId = tx.id; Store.selectedStudentId = st.id; Store.receiptFilterStudentId = st.id; if (!Store.multiReceiptSelectedIds.includes(tx.id)) Store.multiReceiptSelectedIds.unshift(tx.id);
           Store.showToast(`Pembayaran ${formatRupiah(total)} berhasil disimpan.`);
-          if (autoPrint) Store.navigate('receipt', { receiptId: tx.id }); else { this.resetPOS(); Store.navigate('history'); }
+          this.resetPOS();
+          if (autoPrint) Store.navigate('receipt', { receiptId: tx.id }); else Store.navigate('history');
         },
 
                 // --- HISTORY REAL-TIME SEARCH & TABLE DOM UPDATES ---
@@ -5121,27 +4937,10 @@
           const summary = document.getElementById('history_count_summary');
           if (!tbody) return;
 
-          const filtered = Store.transactions.filter(tx => {
-            if (Store.historyFilter.studentId !== 'ALL' && tx.studentId !== Store.historyFilter.studentId) return false;
-            if (Store.historyFilter.startDate && tx.date < Store.historyFilter.startDate) return false;
-            if (Store.historyFilter.endDate && tx.date > Store.historyFilter.endDate) return false;
-            if (Store.historyFilter.search) {
-              const q = Store.historyFilter.search.toLowerCase();
-              const matchNo = tx.receiptNo && tx.receiptNo.toLowerCase().includes(q);
-              const matchName = tx.studentName && tx.studentName.toLowerCase().includes(q);
-              const matchParent = tx.parentName && tx.parentName.toLowerCase().includes(q);
-              const matchItems = tx.items && tx.items.some(i => i.paymentTypeName && i.paymentTypeName.toLowerCase().includes(q));
-              if (!matchNo && !matchName && !matchParent && !matchItems) return false;
-            }
-            return true;
-          }).sort((a, b) => {
-            const dateA = new Date(a.date + ' ' + (a.createdAt ? a.createdAt.split('T')[1] || '' : ''));
-            const dateB = new Date(b.date + ' ' + (b.createdAt ? b.createdAt.split('T')[1] || '' : ''));
-            return Store.historyFilter.sort === 'NEWEST' ? dateB - dateA : dateA - dateB;
-          });
+          const filtered = TeacherWorkspace.filteredTransactions();
 
-          const totalAmount = filtered.reduce((acc, t) => acc + (t.totalAmount || 0), 0);
-          if (summary) summary.innerText = `Total ${filtered.length} transaksi • Akumulasi ${formatRupiah(totalAmount)}`;
+          const totalAmount = filtered.reduce((acc, t) => acc + Number(t.totalAmount || 0), 0);
+          if (summary) summary.innerText = Store.historyFilter.startDate && Store.historyFilter.endDate && Store.historyFilter.startDate > Store.historyFilter.endDate ? 'Tanggal akhir harus sama atau setelah tanggal awal.' : `Total ${filtered.length} transaksi • Total utuh kuitansi ${formatRupiah(totalAmount)}`;
 
           if (filtered.length === 0) {
             tbody.innerHTML = `
@@ -5259,7 +5058,7 @@
             if (Store.billingFilter.search) {
               const q = Store.billingFilter.search.toLowerCase().trim();
               const matchName = sum.student.name.toLowerCase().includes(q);
-              const matchNis = sum.student.nis && sum.student.nis.toLowerCase().includes(q);
+              const matchNis = sum.student.nis && String(sum.student.nis).toLowerCase().includes(q);
               const matchParent = (sum.student.parentName && sum.student.parentName.toLowerCase().includes(q)) ||
                                   (sum.student.father && sum.student.father.toLowerCase().includes(q)) ||
                                   (sum.student.mother && sum.student.mother.toLowerCase().includes(q));
@@ -5290,7 +5089,7 @@
             targetSum += l.totalTarget;
             paidSum += l.totalPaid;
           });
-          const remainingSum = Math.max(0, targetSum - paidSum);
+          const remainingSum = studentLedgers.reduce((total, ledger) => total + ledger.remainingTarget, 0);
 
           if (sub) {
             sub.innerHTML = `Menampilkan <strong>${studentLedgers.length}</strong> dari ${countAll} siswa • Sisa Tagihan Terfilter: <strong>${formatRupiah(remainingSum)}</strong>`;
@@ -5417,7 +5216,7 @@
             if (Store.studentsFilter.gender !== 'ALL' && s.gender !== Store.studentsFilter.gender) return false;
             if (Store.studentsFilter.search) {
               const q = Store.studentsFilter.search.toLowerCase();
-              return s.name.toLowerCase().includes(q) || (s.nis && s.nis.includes(q)) || (s.parentName && s.parentName.toLowerCase().includes(q)) || (s.father && s.father.toLowerCase().includes(q)) || (s.mother && s.mother.toLowerCase().includes(q)) || (s.address && s.address.toLowerCase().includes(q));
+              return TeacherWorkspace.matchesStudent(s, q) || (s.father && s.father.toLowerCase().includes(q)) || (s.mother && s.mother.toLowerCase().includes(q)) || (s.address && s.address.toLowerCase().includes(q));
             }
             return true;
           });
@@ -5504,8 +5303,8 @@
 
         onEditTxItemAmount(idx, val) {
           if (Store.modal && Store.modal.editItems && Store.modal.editItems[idx]) {
-            Store.modal.editItems[idx].paidAmount = Math.max(0, parseInt(val, 10) || 0);
-            Store.render();
+            Store.modal.editItems[idx].paidAmount = Number(val);
+            TeacherWorkspace.updateCorrectionTotal();
           }
         },
 
@@ -5524,7 +5323,7 @@
         onEditTxCashReceived(val) {
           if (Store.modal) {
             Store.modal.cashReceived = val;
-            Store.render();
+            TeacherWorkspace.updateCorrectionTotal();
           }
         },
 
@@ -5540,7 +5339,24 @@
           let newTotal = 0;
           editItems.forEach(it => { newTotal += (Number(it.paidAmount) || 0); });
 
-          const cashRec = Number(document.getElementById('etf_cashReceived').value) || newTotal;
+          const cashValue = document.getElementById('etf_cashReceived').value;
+          const cashRec = cashValue === '' ? newTotal : Number(cashValue);
+          if (!TeacherWorkspace.validDate(date) || !Number.isSafeInteger(newTotal) || newTotal <= 0 || editItems.some(item => !Number.isSafeInteger(Number(item.paidAmount)) || Number(item.paidAmount) < 0) || !Number.isSafeInteger(cashRec) || cashRec < newTotal) {
+            Store.showToast('Periksa tanggal, nominal rupiah bulat, dan uang diterima (minimal sebesar pembayaran).', 'error'); return;
+          }
+          if (!corrNote.trim()) { Store.showToast('Isi alasan koreksi agar perubahan dapat ditelusuri.', 'error'); return; }
+          const student = Store.students.find(row => row.id === tx.studentId);
+          if (student) {
+            const current = Store.getStudentSummary(student);
+            for (const item of editItems) {
+              const fee = current.itemBreakdowns.find(row => row.paymentTypeId === item.paymentTypeId);
+              const oldAmount = tx.items.filter(row => row.paymentTypeId === item.paymentTypeId).reduce((sum, row) => sum + Number(row.paidAmount || 0), 0);
+              const revisedAmount = editItems.filter(row => row.paymentTypeId === item.paymentTypeId).reduce((sum, row) => sum + Number(row.paidAmount || 0), 0);
+              if (fee && revisedAmount > Math.max(oldAmount, fee.billPrice - (fee.paidAmount - oldAmount))) {
+                Store.showToast('Koreksi melebihi sisa tagihan ' + fee.name + '. Periksa pembayaran lainnya.', 'error'); return;
+              }
+            }
+          }
           const change = Math.max(0, cashRec - newTotal);
 
           const updated = {
@@ -5561,12 +5377,13 @@
             ]
           };
 
+          const oldTransactions = Store.transactions; const oldAudit = [...Store.auditLogs];
           Store.transactions = Store.transactions.map(t => t.id === tx.id ? updated : t);
           Store.recordAudit('KOREKSI TRANSAKSI', 'Transaksi', updated.id, 'Kuitansi ' + tx.receiptNo + '; ' + (corrNote || 'Koreksi data pembayaran') + '; total ' + formatRupiah(tx.totalAmount) + ' menjadi ' + formatRupiah(newTotal), newTotal);
           Store.selectedReceiptId = updated.id;
           Store.selectedStudentId = updated.studentId;
-          Store.save();
-          Store.closeModal();
+          if (!Store.save()) { Store.transactions = oldTransactions; Store.auditLogs = oldAudit; return; }
+          this.closeModal();
           Store.showToast(`Transaksi ${tx.receiptNo} berhasil diperbarui.`);
           if (Store.currentTab === 'history') window.AppActions.updateHistoryTableDOM();
           if (Store.currentTab === 'receipt') Store.render();
@@ -5583,13 +5400,18 @@
             confirmText: 'Ya, Hapus Transaksi',
             variant: 'danger',
             onConfirm: () => {
+              const oldTransactions = Store.transactions; const oldAudit = [...Store.auditLogs];
               Store.transactions = Store.transactions.filter(t => t.id !== id);
+              // Keep a high-water mark even when deleting the highest legacy receipt.
+              const match = tx.receiptNo.match(/^(.*)-(\d+)$/);
+              const oldSequences = { ...(Store.settings.receiptSequences || {}) };
+              if (match) Store.settings.receiptSequences = { ...oldSequences, [match[1]]: Math.max(Number(oldSequences[match[1]]) || 0, Number(match[2])) };
               Store.recordAudit('HAPUS TRANSAKSI', 'Transaksi', tx.id, 'Kuitansi ' + tx.receiptNo + ' | ' + tx.studentName, tx.totalAmount);
+              if (!Store.save()) { Store.transactions = oldTransactions; Store.auditLogs = oldAudit; Store.settings.receiptSequences = oldSequences; return; }
               if (Store.selectedReceiptId === id) {
                 Store.selectedReceiptId = Store.transactions.length > 0 ? Store.transactions[0].id : null;
               }
               Store.multiReceiptSelectedIds = Store.multiReceiptSelectedIds.filter(i => i !== id);
-              Store.save();
               Store.showToast(`Transaksi ${tx.receiptNo} telah dihapus.`, 'warning');
               Store.render();
               if (Store.currentTab === 'history') window.AppActions.updateHistoryTableDOM();
@@ -5656,7 +5478,7 @@
             Store.showToast(`Data siswa ${name} berhasil diperbarui.`);
           }
           Store.save();
-          Store.closeModal();
+          this.closeModal();
           this.updateStudentsTableDOM();
         },
 
@@ -5769,7 +5591,7 @@
             Store.showToast(`Tagihan "${name}" berhasil diperbarui.`);
           }
           Store.save();
-          Store.closeModal();
+          this.closeModal();
         },
 
         deletePaymentType(id) {
@@ -6068,6 +5890,8 @@
         }
       });
 
+      // Existing inline form handlers and the workspace share this store.
+      window.Store = Store;
       CloudSync.loadConfig();
       Store.init();
       Store.render();
