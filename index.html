@@ -251,6 +251,12 @@
         { id: 'std-20', name: 'Zany Izz Hana', gender: 'Putri', class: '1', nis: '', nisn: '', ttl: 'Banyumas, 3 Sept 2019', father: 'Rudi Affanda', mother: 'Dyah Cayaning', parentName: 'Rudi Affanda', job: 'Buruh', address: 'Gerduren RT 01/07', phone: '', notes: '', active: true, createdAt: '2026-08-01' }
       ];
 
+      const PHOTO_REPORT_PAYMENT_TYPE = {
+        id: 'pt-foto-rapor-kelas-1', name: 'Foto Rapor Siswa Kelas 1',
+        pricePutra: 30000, pricePutri: 30000, applicableGender: 'Semua',
+        period: '1 Kali', notes: 'Pembayaran foto rapor siswa kelas 1', active: true, isDefault: true
+      };
+
       const DEFAULT_PAYMENT_TYPES = [
         { id: 'pt-1', name: 'Batik Identitas', pricePutra: 145000, pricePutri: 160000, applicableGender: 'Semua', period: '1 Kali', notes: 'Batik seragam identitas sekolah', active: true, isDefault: true },
         { id: 'pt-2', name: 'Kaos Olahraga', pricePutra: 100000, pricePutri: 110000, applicableGender: 'Semua', period: '1 Kali', notes: 'Setelan kaos dan celana OR', active: true, isDefault: true },
@@ -260,7 +266,8 @@
         { id: 'pt-6', name: 'Topi + Dasi', pricePutra: 35000, pricePutri: 35000, applicableGender: 'Semua', period: '1 Kali', notes: 'Perlengkapan upacara', active: true, isDefault: true },
         { id: 'pt-7', name: 'Buku LKS Kelas 1 Semester 1', pricePutra: 78000, pricePutri: 78000, applicableGender: 'Semua', period: 'Semester 1', notes: 'Paket LKS Kurikulum Merdeka', active: true, isDefault: true },
         { id: 'pt-8', name: 'Iuran Pramuka + Dana Abadi', pricePutra: 13000, pricePutri: 13000, applicableGender: 'Semua', period: '1 Tahun', notes: 'Iuran wajib tahunan', active: true, isDefault: true },
-        { id: 'pt-9', name: 'Buku 7 KIH', pricePutra: 10000, pricePutri: 10000, applicableGender: 'Semua', period: '1 Kali', notes: 'Buku 7 Kebiasaan Anak Indonesia Hebat (7 KIH)', active: true, isDefault: true }
+        { id: 'pt-9', name: 'Buku 7 KIH', pricePutra: 10000, pricePutri: 10000, applicableGender: 'Semua', period: '1 Kali', notes: 'Buku 7 Kebiasaan Anak Indonesia Hebat (7 KIH)', active: true, isDefault: true },
+        { ...PHOTO_REPORT_PAYMENT_TYPE }
       ];
 
 
@@ -490,7 +497,7 @@
             Store.modal = { type: 'CONFIRM', title: 'Ambil Data dari Cloud?', message: 'Ruang: ' + escapeHtml(this.config.workspaceName || this.config.workspaceId) + '. Revisi cloud: ' + Number(remote.revision) + '. Berisi ' + remote.payload.students.length + ' siswa, ' + remote.payload.paymentTypes.length + ' jenis tagihan, dan ' + check.transactions.length + ' transaksi dengan total ' + formatRupiah(total) + '. Data lokal perangkat ini akan diganti. Buat backup lokal terlebih dahulu jika ada perubahan yang belum dikirim.', confirmText: 'Ganti dengan Data Cloud', variant: 'danger',
               onConfirm: () => {
                 const old = { students: Store.students, paymentTypes: Store.paymentTypes, transactions: Store.transactions, settings: Store.settings, auditLogs: Store.auditLogs || [] };
-                Store.students = remote.payload.students; Store.paymentTypes = remote.payload.paymentTypes; Store.transactions = check.transactions; Store.settings = { ...DEFAULT_SETTINGS, ...(remote.payload.settings || {}) };
+                Store.students = remote.payload.students; Store.paymentTypes = remote.payload.paymentTypes; Store.transactions = check.transactions; Store.settings = { ...DEFAULT_SETTINGS, ...(remote.payload.settings || {}) }; Store.applyPaymentTypeMigrations();
                 const logMap = new Map([...(remote.payload.auditLogs || []), ...(old.auditLogs || [])].map(log => [log.id, log]));
                 Store.auditLogs = Array.from(logMap.values()).sort((a,b) => new Date(b.at) - new Date(a.at)).slice(0,1500);
                 Store.recordAudit('AMBIL DATA DARI CLOUD', 'Cloud', this.config.workspaceId, 'Mengambil revisi ' + Number(remote.revision), total);
@@ -553,6 +560,15 @@
         studentsFilter: { search: '', gender: 'ALL' },
         reportState: { type: 'PER_STUDENT_DETAILED', date: getTodayISO() },
 
+        applyPaymentTypeMigrations() {
+          // One-time addition: retain existing IDs/prices and respect later deletion or deactivation.
+          if (this.settings.paymentMigrations?.photoReportClass1) return;
+          const normalizedName = name => String(name || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('id-ID');
+          const exists = this.paymentTypes.some(type => type.id === PHOTO_REPORT_PAYMENT_TYPE.id || normalizedName(type.name) === normalizedName(PHOTO_REPORT_PAYMENT_TYPE.name));
+          if (!exists) this.paymentTypes = [...this.paymentTypes, { ...PHOTO_REPORT_PAYMENT_TYPE }];
+          this.settings.paymentMigrations = { ...(this.settings.paymentMigrations || {}), photoReportClass1: true };
+        },
+
         init() {
           try {
             const s = localStorage.getItem('app_students');
@@ -607,9 +623,11 @@
               const parsedSet = JSON.parse(set);
               this.settings = { ...DEFAULT_SETTINGS, ...parsedSet };
             } else {
-              this.settings = DEFAULT_SETTINGS;
+              this.settings = { ...DEFAULT_SETTINGS };
             }
-          } catch(e) { this.settings = DEFAULT_SETTINGS; }
+          } catch(e) { this.settings = { ...DEFAULT_SETTINGS }; }
+
+          this.applyPaymentTypeMigrations();
 
           if (this.settings.darkMode) {
             document.documentElement.classList.add('dark');
@@ -5675,7 +5693,7 @@
                 confirmText: 'Pulihkan Data Ini', variant: 'danger',
                 onConfirm: () => {
                   const old = { students: Store.students, paymentTypes: Store.paymentTypes, transactions: Store.transactions, settings: Store.settings, auditLogs: Store.auditLogs || [] };
-                  Store.students = data.students; Store.paymentTypes = data.paymentTypes; Store.transactions = transactions; Store.settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
+                  Store.students = data.students; Store.paymentTypes = data.paymentTypes; Store.transactions = transactions; Store.settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) }; Store.applyPaymentTypeMigrations();
                   const mergedAuditMap = new Map([...importedAuditLogs, ...(old.auditLogs || [])].map(log => [log.id, log]));
                   Store.auditLogs = Array.from(mergedAuditMap.values()).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 1500);
                   Store.recordAudit('RESTORE BACKUP', 'Database', 'restore', 'Restore ' + data.students.length + ' siswa dan ' + transactions.length + ' transaksi', money);
@@ -5722,7 +5740,7 @@
               Store.students = DEFAULT_STUDENTS;
               Store.paymentTypes = DEFAULT_PAYMENT_TYPES;
               Store.transactions = [];
-              Store.settings = DEFAULT_SETTINGS;
+              Store.settings = { ...DEFAULT_SETTINGS };
               Store.recordAudit('RESET TOTAL', 'Database', 'factory-reset', 'Data siswa, tagihan, transaksi dan pengaturan dikembalikan ke awal');
               Store.selectedReceiptId = null;
               Store.multiReceiptSelectedIds = [];

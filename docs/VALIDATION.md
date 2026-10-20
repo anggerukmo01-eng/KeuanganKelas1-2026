@@ -19,7 +19,7 @@ Basis perubahan: commit `39fe98fc29284c3592546d2adf9bb333e8013273`.
 
 ## Pemeriksaan yang selesai
 
-- `npm test`: 16 pengujian regresi lulus (termasuk pemeriksaan sintaks skrip).
+- `npm test`: 20 pengujian regresi lulus (termasuk pemeriksaan sintaks skrip).
 - `npm run build:css`: stylesheet berhasil dikompilasi.
 - Browser Chromium headless: pencarian melalui nama ibu, filter biaya, cicilan, uang kembalian, catatan dan tanggal transaksi, penyimpanan/reload, koreksi nominal dan alasan, filter rentang tanggal, CSV hasil filter, backup JSON, ganti tema, serta navigasi bawah.
 - Layout pada 360×800, 390×844, 820×1180, dan 1440×1000. Tidak ada overflow halaman pada menu utama yang diperiksa. Beranda, cek pembayaran, dan riwayat tidak membutuhkan gulir horizontal pada ukuran tersebut.
@@ -32,10 +32,15 @@ Basis perubahan: commit `39fe98fc29284c3592546d2adf9bb333e8013273`.
 - Layanan eksternal diblokir dalam pengujian browser untuk memastikan fungsi inti dan CSS lokal tetap berjalan. XLSX, ekspor gambar, autentikasi/sinkronisasi Supabase belum diuji secara langsung dengan layanan aktif.
 - Tagihan berulang belum dibuat per periode. Tidak ada penambahan backend atau perubahan SQL dalam pembaruan ini.
 - Penyimpanan lokal tidak menyediakan transaksi serentak antar-tab. Gunakan satu tab utama untuk pencatatan.
-- Perubahan disiapkan pada cabang pengembangan dan pull request; belum diterbitkan ke situs GitHub Pages sampai digabung ke `main`.
+- Revisi foto rapor ditujukan untuk penggabungan PR #1 ke `main` setelah pemeriksaan otomatis berhasil. Status publikasi diperiksa melalui workflow GitHub Pages.
 
 ## Contoh tampilan dengan data uji
 
 ![Beranda desktop](preview-desktop.png)
 
 ![Cek pembayaran tablet dalam mode gelap](preview-tablet.png)
+
+
+## Revisi foto rapor
+
+Tambahan Rp30.000 untuk putra/putri (satu kali). Empat pengujian tambahan mencakup data baru, migrasi data lama/reload/penghapusan yang disengaja, pencegahan duplikat serta pemeliharaan tarif/status yang sudah diubah, dan alur cicilan hingga lunas untuk tagihan foto rapor.

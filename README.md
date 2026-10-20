@@ -77,3 +77,10 @@ python -m http.server 8000
 Buka `http://localhost:8000`. Jalankan ulang `npm run build:css` setelah mengubah kelas Tailwind di HTML/JavaScript, lalu sertakan `assets/app.css` dalam commit. GitHub Pages menyajikan berkas statis yang sudah tersedia; tidak memerlukan build Node saat dibuka pengguna.
 
 Pengujian regresi mencakup saldo per biaya, tipe angka dari backup, pencarian, kombinasi filter, urutan kuitansi, cicilan, validasi tanggal/nominal, rollback saat penyimpanan gagal, koreksi, dan pemisahan penerima. Hasil pemeriksaan dan batasannya ada di [catatan validasi](docs/VALIDATION.md).
+
+
+### Foto Rapor Siswa Kelas 1
+
+Tagihan **Foto Rapor Siswa Kelas 1** sebesar **Rp30.000** berlaku untuk putra dan putri, satu kali pembayaran. Tersedia di Jenis Pembayaran, Cek Pembayaran, kasir, rincian siswa, kuitansi, dan rekap.
+
+Saat membuka data lama atau memulihkan backup/snapshot lama, aplikasi menambahkan tagihan ini satu kali jika belum ada. ID, nominal, dan transaksi yang sudah tersimpan tetap dipertahankan. Jenis dengan ID atau nama yang sama tidak digandakan; perubahan tarif, penonaktifan, atau penghapusan yang dilakukan setelah migrasi tetap dihormati. Penanda migrasi ikut disimpan bersama data/pengaturan saat penyimpanan berikutnya.

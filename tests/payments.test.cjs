@@ -25,3 +25,28 @@ test('failed save rolls back payment, audit, counter and storage, retains draft'
 test('failed delete retains payment in memory and storage',()=>{const a=fixture();a.Store.transactions=[tx('a','2026-10-15',10000)];a.Store.save();a.failNextWrite('app_transactions');a.AppActions.deleteTransaction('a');a.AppActions.confirmModalAction();assert.equal(a.Store.transactions.length,1);assert.equal(JSON.parse(a.data.get('app_transactions')).length,1);assert.equal(a.Store.auditLogs.length,0);});
 test('teacher and treasurer installments remain separately accounted',()=>{const a=fixture();a.Store.transactions=[tx('a','2026-10-01',30000,'p-1','Dibayar ke Guru Lain'),tx('b','2026-10-15',20000)];const sum=a.Store.getDepositSummary();assert.equal(sum.totalCashTeacher,20000);assert.equal(sum.totalDirectTreasurer,30000);assert.equal(sum.totalRemaining,450000);});
 test('correction validates reason and cash, rolls back failed save then succeeds',()=>{const a=fixture();a.Store.transactions=[tx('a','2026-10-15',10000)];a.Store.save();a.AppActions.openEditTransaction('a');for(const [id,value] of Object.entries({etf_date:'2026-10-15',etf_parentName:'Ibu',etf_officer:'Guru',etf_notes:'',etf_correctionNote:'',etf_cashReceived:'20000'}))a.fields.set(id,{value});a.Store.modal.editItems[0].paidAmount=20000;a.AppActions.saveEditTransaction();assert.equal(a.Store.transactions[0].totalAmount,10000);a.fields.get('etf_correctionNote').value='Koreksi nominal';a.fields.get('etf_cashReceived').value='1';a.AppActions.saveEditTransaction();assert.equal(a.Store.transactions[0].totalAmount,10000);a.fields.get('etf_cashReceived').value='20000';a.failNextWrite('app_transactions');a.AppActions.saveEditTransaction();assert.equal(a.Store.transactions[0].totalAmount,10000);assert.equal(a.Store.auditLogs.length,0);a.AppActions.saveEditTransaction();assert.equal(a.Store.transactions[0].totalAmount,20000);assert.equal(a.Store.modal,null);});
+
+test('fresh class includes one report photo fee at Rp30000 for both genders',()=>{
+ const a=app(),fees=a.Store.paymentTypes.filter(p=>p.id==='pt-foto-rapor-kelas-1');
+ assert.equal(fees.length,1);assert.equal(fees[0].name,'Foto Rapor Siswa Kelas 1');assert.equal(fees[0].pricePutra,30000);assert.equal(fees[0].pricePutri,30000);assert.equal(fees[0].period,'1 Kali');
+ for(const gender of ['Putra','Putri']){const sum=a.Store.getStudentSummary({id:'test-photo',gender});assert.equal(sum.itemBreakdowns.find(i=>i.paymentTypeId===fees[0].id).remainingAmount,30000);}
+});
+test('legacy class gains photo fee once, retains records and respects subsequent deletion',()=>{
+ const legacy=fixture();legacy.Store.save();const saved=Object.fromEntries(legacy.data),settings=JSON.parse(saved.app_settings);delete settings.paymentMigrations;saved.app_settings=JSON.stringify(settings);
+ const a=app(saved);assert.equal(a.Store.paymentTypes.filter(p=>p.id==='pt-foto-rapor-kelas-1').length,1);assert.equal(a.Store.students.length,2);assert.equal(a.Store.paymentTypes.find(p=>p.id==='p-1').pricePutra,100000);
+ a.Store.save();const b=app(Object.fromEntries(a.data));assert.equal(b.Store.paymentTypes.filter(p=>p.id==='pt-foto-rapor-kelas-1').length,1);
+ b.Store.paymentTypes=b.Store.paymentTypes.filter(p=>p.id!=='pt-foto-rapor-kelas-1');b.Store.save();assert.equal(app(Object.fromEntries(b.data)).Store.paymentTypes.some(p=>p.id==='pt-foto-rapor-kelas-1'),false);
+});
+test('existing photo fee name or stable ID is not duplicated or overwritten',()=>{
+ for(const row of [{id:'manual-photo',name:'  FOTO RAPOR SISWA KELAS 1  ',active:false,pricePutra:25000,pricePutri:25000},{id:'pt-foto-rapor-kelas-1',name:'Foto Rapor',active:false,pricePutra:20000,pricePutri:20000}]){
+  const a=app({app_payment_types:JSON.stringify([row])});assert.equal(a.Store.paymentTypes.filter(p=>p.name.toLowerCase().includes('foto')).length,1);assert.equal(a.Store.paymentTypes.find(p=>p.id===row.id).pricePutra,row.pricePutra);assert.equal(a.Store.paymentTypes.find(p=>p.id===row.id).active,false);
+ }
+});
+test('report photo installment of Rp10000 leaves Rp20000 then settles without changing other fees',()=>{
+ const a=app(),student=a.Store.students[0],photo='pt-foto-rapor-kelas-1',before=a.Store.getStudentSummary(student).remainingTarget;
+ for(const amount of [10000,20000]){
+  a.AppActions.selectPOSStudent(student.id);Object.entries(a.Store.pos.selectedItems).forEach(([id,item])=>item.checked=id===photo);a.Store.pos.selectedItems[photo].paidAmount=amount;a.Store.pos.cashReceived=String(amount);a.AppActions.savePOSTransaction(true);
+  assert.equal(a.Store.getStudentSummary(student).itemBreakdowns.find(i=>i.paymentTypeId===photo).remainingAmount,amount===10000?20000:0);
+ }
+ const sum=a.Store.getStudentSummary(student),item=sum.itemBreakdowns.find(i=>i.paymentTypeId===photo);assert.equal(item.paidAmount,30000);assert.equal(item.remainingAmount,0);assert.equal(item.status,'Lunas');assert.equal(sum.remainingTarget,before-30000);assert.equal(a.Store.transactions.length,2);assert.equal(a.Store.transactions[0].items[0].paymentTypeName,'Foto Rapor Siswa Kelas 1');
+});
