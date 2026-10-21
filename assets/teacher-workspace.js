@@ -42,6 +42,7 @@
           <div class="tw-hero-row"><div><h1>Pembayaran kelas,<br>lebih mudah dipantau.</h1><p>Catat penerimaan, periksa sisa tagihan, dan temukan bukti pembayaran dalam satu tempat.</p></div><div class="tw-hero-mark" aria-hidden="true">${icon('check')}<span>SI-BAYAR</span></div></div>
           <div class="tw-hero-actions"><button class="tw-button tw-white" onclick="AppActions.navigate('payment')">${icon('plus')} Catat pembayaran</button><button class="tw-button tw-glass" onclick="AppActions.navigate('check')">${icon('search')} Cek pembayaran siswa</button></div>
         </section>
+        <section class="tw-panel"><div class="tw-section-title"><h2>Kas pembayaran utama</h2><button class="tw-link" onclick="AppActions.navigate('deposit')">Setoran & saldo →</button></div>${Finance.cards('main')}</section>
         <div class="tw-metrics">
           <div class="tw-metric"><span>Penerimaan hari ini</span><strong>${money(stats.todayRevenue)}</strong><small>${stats.todayTxCount} transaksi tercatat</small></div>
           <div class="tw-metric"><span>Masih perlu pembayaran</span><strong class="tw-amber">${outstanding} <em>siswa</em></strong><small>dari ${stats.totalStudents} siswa aktif</small></div>
@@ -54,7 +55,7 @@
         </section>
         <div class="tw-bottom-grid"><section class="tw-panel"><div class="tw-section-title"><div><span class="tw-eyebrow">CATATAN TERBARU</span><h2>Pembayaran terakhir</h2></div><button class="tw-link" onclick="AppActions.navigate('history')">Lihat semua →</button></div>
           ${recent.length ? recent.map(tx=>`<button class="tw-recent" onclick="AppActions.navigate('receipt', {receiptId:${jsArg(tx.id)}})"><span class="tw-avatar">${esc((tx.studentName||'?').slice(0,1))}</span><span><b>${esc(tx.studentName)}</b><small>${dateLabel(tx.date)} · ${esc(tx.receiptNo)}</small></span><strong>${money(tx.totalAmount)}</strong>${icon('arrow')}</button>`).join('') : '<div class="tw-empty">Belum ada pembayaran tercatat.<br>Gunakan tombol “Catat pembayaran” untuk memulai.</div>'}
-        </section><aside class="tw-panel tw-note"><span class="tw-eyebrow">DATA KELAS</span><h2>Catatan tetap terjaga.</h2><p>Data disimpan di browser perangkat ini. Unduh cadangan secara berkala, terutama sebelum pindah perangkat.</p><button class="tw-button" onclick="AppActions.downloadBackupJSON()">Unduh cadangan JSON</button><button class="tw-link" onclick="AppActions.navigate('settings')">Pengaturan & sinkronisasi →</button><small>Sinkronisasi cloud dijalankan manual setelah dikonfigurasi.</small></aside></div>
+        </section><aside class="tw-panel tw-note"><span class="tw-eyebrow">DATA KELAS</span><h2>Catatan tetap terjaga.</h2><p>Data disimpan di browser perangkat ini. Unduh cadangan secara berkala, terutama sebelum pindah perangkat.</p><button class="tw-button" onclick="AppActions.downloadBackupJSON()">Unduh cadangan JSON</button><button class="tw-link" onclick="AppActions.navigate('backup')">Backup Dropbox →</button><small>Sinkronisasi cloud dijalankan manual setelah dikonfigurasi.</small></aside></div>
       </div>`;
     },
     openCheck(search='', status='ALL') {

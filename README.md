@@ -84,3 +84,26 @@ Pengujian regresi mencakup saldo per biaya, tipe angka dari backup, pencarian, k
 Tagihan **Foto Rapor Siswa Kelas 1** sebesar **Rp30.000** berlaku untuk putra dan putri, satu kali pembayaran. Tersedia di Jenis Pembayaran, Cek Pembayaran, kasir, rincian siswa, kuitansi, dan rekap.
 
 Saat membuka data lama atau memulihkan backup/snapshot lama, aplikasi menambahkan tagihan ini satu kali jika belum ada. ID, nominal, dan transaksi yang sudah tersimpan tetap dipertahankan. Jenis dengan ID atau nama yang sama tidak digandakan; perubahan tarif, penonaktifan, atau penghapusan yang dilakukan setelah migrasi tetap dihormati. Penanda migrasi ikut disimpan bersama data/pengaturan saat penyimpanan berikutnya.
+
+## Pembaruan buku kas & Dropbox (21 Oktober 2026)
+
+- **Setoran & Saldo**: penerimaan guru, penyerahan ke bendahara, saldo guru, serta pembayaran langsung ke bendahara. Setoran memiliki tanggal, siswa, jenis biaya, nominal, penerima, dan bukti/catatan. Pembatalan menyimpan alasan; setoran tidak menambah pembayaran siswa.
+- **Pembayaran Lain-lain**: buat tagihan untuk satu siswa atau semua siswa aktif, catat cicilan/penerima, lihat sisa tagihan, dan ekspor rekap tersendiri. Tidak masuk kasir, tagihan, atau total pembayaran utama. Peserta ditetapkan saat tagihan dibuat.
+- Rekap setoran mencakup transaksi historis siswa/biaya nonaktif. Rekap tagihan utama tetap mengikuti tarif aktif. Transaksi lama berstatus `Dibayar ke Guru Lain` tetap diklasifikasikan sebagai langsung bendahara sesuai perilaku sebelumnya; periksa penerima historis sebelum memakai rekap sebagai bukti kas.
+- Ledger tambahan disimpan dalam `settings.financeLedger`, ikut backup JSON, Dropbox, dan snapshot Supabase. Backup lama tetap dapat dipulihkan, tetapi pemulihan mengganti seluruh data, termasuk buku kas tambahan.
+- Validasi menolak setoran melebihi penerimaan atau mendahului penerimaan pendukung. Batalkan setoran terkait sebelum menghapus/mengurangi pembayaran yang membiayainya.
+- CSV setoran menyertakan bukti penyerahan; Excel memiliki lembar Kas Utama, Kas Lain-lain, Bukti Setoran, Tagihan Lain-lain, dan Riwayat Lain-lain.
+
+### Aktivasi Dropbox oleh pemilik aplikasi
+
+Integrasi sudah tersedia, tetapi **belum memiliki App key bawaan dan belum diuji dengan akun Dropbox nyata**.
+
+1. Daftarkan aplikasi di https://www.dropbox.com/developers/apps dengan Scoped access / **App folder**.
+2. Aktifkan `files.content.write`, `files.content.read`, `files.metadata.read`.
+3. Daftarkan Redirect URI persis `https://anggerukmo01-eng.github.io/KeuanganKelas1-2026/`. Jika menggunakan `/index.html`, URI itu juga perlu didaftarkan.
+4. Buka **Backup Dropbox → Pengaturan awal administrator**, masukkan **App key publik**, lalu hubungkan akun. Jangan masukkan App secret atau token.
+5. Tekan **Backup ke Dropbox sekarang**. **Muat daftar backup** untuk mengunduh dan meninjau cadangan sebelum menyetujui restore.
+
+OAuth menggunakan PKCE S256, pemeriksaan state, dan token singkat dalam sessionStorage. Token tidak disertakan dalam backup. Tidak ada backup otomatis di latar belakang. Tombol putus sesi menghapus sesi perangkat; pencabutan izin aplikasi dilakukan dari akun Dropbox. Cadangan JSON lokal tetap tersedia.
+
+Panduan resmi: https://docs.dropboxapi.com/dropbox-api/docs/oauth

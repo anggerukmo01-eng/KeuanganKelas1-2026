@@ -44,3 +44,13 @@ Basis perubahan: commit `39fe98fc29284c3592546d2adf9bb333e8013273`.
 ## Revisi foto rapor
 
 Tambahan Rp30.000 untuk putra/putri (satu kali). Empat pengujian tambahan mencakup data baru, migrasi data lama/reload/penghapusan yang disengaja, pencegahan duplikat serta pemeliharaan tarif/status yang sudah diubah, dan alur cicilan hingga lunas untuk tagihan foto rapor.
+
+## Buku kas terpisah & Dropbox — 21 Oktober 2026
+
+- 26 pengujian Node lulus: regresi pembayaran sebelumnya, pemisahan buku lain-lain, konservasi saldo, transaksi historis/nonaktif, rollback gagal simpan, blokir penghapusan penerimaan yang sudah disetor, validasi backup/ID/tanggal, setoran tidak mendahului penerimaan.
+- Uji Chromium desktop 1440×1000 dan ponsel 390×844: input setoran, tagihan dan pembayaran lain-lain, reload, menu, overflow halaman, tanpa error JavaScript tak tertangani.
+- Dropbox diuji dengan respons API tiruan: upload seluruh buku tanpa token, daftar, unduh, dialog konfirmasi restore, pemulihan, dan sesi 401. OAuth callback: state salah ditolak, state benar menukar kode dengan PKCE tanpa client secret, parameter kode dibersihkan dari URL.
+- Koneksi dan izin Dropbox akun nyata belum diverifikasi; memerlukan App key administrator dan persetujuan akun. Ini bukan klaim uji end-to-end Dropbox produksi.
+- Screenshot: `setoran-desktop.png`, `lain-lain-mobile.png` menggunakan data uji lokal; data uji tidak disimpan sebagai database bawaan.
+
+Browser smoke test disimpan pada `tests/browser-smoke.cjs`; jalankan dari akar repo dengan modul Playwright tersedia (`PLAYWRIGHT_MODULE` opsional) dan executable Chromium pada `CHROMIUM_PATH` bila bukan instalasi Playwright standar. API eksternal diblokir/dimock selama pengujian; tidak mengubah akun produksi.
