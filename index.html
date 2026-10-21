@@ -8,6 +8,9 @@
   <link rel="stylesheet" href="assets/app.css">
   <link rel="stylesheet" href="assets/teacher-workspace.css">
   <script src="assets/teacher-workspace.js"></script>
+  <link rel="stylesheet" href="assets/finance-workspace.css">
+  <script src="assets/finance-workspace.js"></script>
+  <script src="assets/dropbox-backup.js"></script>
 
   <!-- SheetJS for Real Excel (.xlsx) Export -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -175,6 +178,8 @@
           if (Math.round(sum) !== Math.round(Number(tx.totalAmount))) return fail('Total transaksi ' + tx.receiptNo + ' tidak sama dengan jumlah rincian.');
         }
         if (data.settings !== undefined && (!data.settings || typeof data.settings !== 'object' || Array.isArray(data.settings))) return fail('Pengaturan aplikasi tidak valid.');
+        const financeError = Finance.validate(data.settings || {}, transactions);
+        if (financeError) return fail(financeError);
         const auditLogs = data.auditLogs === undefined ? [] : data.auditLogs;
         if (!Array.isArray(auditLogs) || auditLogs.length > 5000) return fail('Riwayat audit pada backup tidak valid.');
         for (const log of auditLogs) if (!log || typeof log !== 'object' || typeof log.id !== 'string' || typeof log.action !== 'string' || typeof log.at !== 'string') return fail('Ada entri riwayat audit yang tidak valid.');
@@ -640,6 +645,8 @@
         },
 
         save() {
+          const financeError = Finance.validate(this.settings, this.transactions);
+          if (financeError) { this.showToast(financeError, 'error'); return false; }
           const keys = ['app_students', 'app_payment_types', 'app_transactions', 'app_settings', 'app_audit_logs'];
           let previous = [];
           try {
@@ -970,7 +977,9 @@
           { id: 'dashboard', label: 'Beranda', icon: 'dashboard' },
           { id: 'check', label: 'Cek Pembayaran', icon: 'search' },
           { id: 'payment', label: 'Catat Pembayaran', icon: 'creditCard', highlight: true },
-          { id: 'deposit', label: 'Rekap Bendahara', icon: 'clipboardCheck', highlight: true },
+          { id: 'other', label: 'Pembayaran Lain-lain', icon: 'tags' },
+          { id: 'backup', label: 'Backup Dropbox', icon: 'settings' },
+          { id: 'deposit', label: 'Setoran & Saldo', icon: 'clipboardCheck', highlight: true },
           { id: 'history', label: 'Riwayat Pembayaran', icon: 'history' },
           { id: 'billing', label: 'Daftar Tagihan', icon: 'billing' },
           { id: 'students', label: 'Data Siswa', icon: 'users', count: stats.totalStudents },
@@ -1056,7 +1065,9 @@
           dashboard: 'Beranda Guru',
           check: 'Cek Pembayaran Siswa',
           payment: 'Kasir Pembayaran Siswa',
-          deposit: 'Laporan Setoran Keuangan ke Bendahara Buku (Bu Aenal)',
+          deposit: 'Setoran & Saldo Guru',
+          other: 'Pembayaran Lain-lain',
+          backup: 'Backup Dropbox',
           history: 'Riwayat Transaksi',
           billing: 'Daftar Tagihan Siswa',
           students: 'Manajemen Data Siswa',
@@ -1106,7 +1117,9 @@
           case 'dashboard': return TeacherWorkspace.dashboard(stats);
           case 'check': return TeacherWorkspace.render();
           case 'payment': return renderPaymentPOS();
-          case 'deposit': return renderDepositReport(stats);
+          case 'deposit': return Finance.render();
+          case 'other': return Finance.renderOther();
+          case 'backup': return DropboxBackup.render();
           case 'history': return renderHistory();
           case 'billing': return renderBilling();
           case 'student-detail': return renderStudentDetail();
@@ -1365,7 +1378,7 @@
                               class="w-full py-1.5 px-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200"
                             >
                               <option value="Sudah Dibayar" ${item.status === 'Sudah Dibayar' ? 'selected' : ''}>Guru kelas (status dihitung otomatis)</option>
-                              <option value="Dibayar ke Guru Lain" ${item.status === 'Dibayar ke Guru Lain' ? 'selected' : ''}>Dibayar ke Guru Lain (Olahraga/Agama/Wali)</option>
+                              <option value="Dibayar ke Guru Lain" ${item.status === 'Dibayar ke Guru Lain' ? 'selected' : ''}>Langsung ke Bendahara (bukan kas guru)</option>
                             </select>
                           </div>
                           <div>
@@ -2891,6 +2904,7 @@
         
         return `
           <div class="space-y-6">
+            <section class="tw-workspace tw-panel"><h2 class="fw-title">Arus uang pembayaran utama • seluruh periode</h2>${Finance.cards('main')}<button class="tw-link no-print" onclick="AppActions.navigate('deposit')">Rincian setoran & saldo →</button> · <button class="tw-link no-print" onclick="AppActions.navigate('other')">Rekap lain-lain terpisah →</button></section>
             <!-- TOOLBAR ATAS -->
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
               <div>
@@ -3736,7 +3750,7 @@
 
 
       function renderSettings() {
-        return `
+        return `<div class="tw-panel no-print"><h2 class="fw-title">Backup Dropbox</h2><p>Simpan dan pulihkan seluruh buku pembayaran serta setoran.</p><button class="tw-button tw-primary" onclick="AppActions.navigate('backup')">Buka Backup Dropbox</button></div>
           <div class="max-w-4xl mx-auto space-y-6">
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
               <div>
@@ -4340,7 +4354,7 @@
                               >
                                 <option value="Lunas" ${it.status === 'Lunas' ? 'selected' : ''}>Lunas</option>
                                 <option value="Sebagian" ${it.status === 'Sebagian' ? 'selected' : ''}>Sebagian (Cicil)</option>
-                                <option value="Dibayar ke Guru Lain" ${it.status === 'Dibayar ke Guru Lain' ? 'selected' : ''}>Dibayar ke Guru Lain</option>
+                                <option value="Dibayar ke Guru Lain" ${it.status === 'Dibayar ke Guru Lain' ? 'selected' : ''}>Langsung ke Bendahara (status lama: Guru Lain)</option>
                                 <option value="Gratis/Pembebasan" ${it.status === 'Gratis/Pembebasan' ? 'selected' : ''}>Gratis / Pembebasan</option>
                                 <option value="Koreksi" ${it.status === 'Koreksi' ? 'selected' : ''}>Koreksi</option>
                               </select>
@@ -4536,6 +4550,7 @@
             confirmText: 'Ya, Reset Pembayaran Siswa Ini',
             variant: 'danger',
             onConfirm: () => {
+              if (Finance.ledger().transfers.some(t => !t.voided && t.category === 'main' && t.studentId === studentId)) { Store.showToast('Batalkan setoran siswa ini sebelum mereset pembayaran.', 'error'); return; }
               Store.transactions = Store.transactions.filter(t => t.studentId !== studentId);
               if (Store.selectedReceiptId) {
                 const exists = Store.transactions.some(t => t.id === Store.selectedReceiptId);
@@ -5716,6 +5731,7 @@
             confirmText: 'Hapus Semua Transaksi',
             variant: 'danger',
             onConfirm: () => {
+              if (Finance.ledger().transfers.some(t => !t.voided && t.category === 'main')) { Store.showToast('Batalkan setoran utama sebelum menghapus seluruh transaksi.', 'error'); return; }
               const countBeforeReset = Store.transactions.length;
               const amountBeforeReset = Store.transactions.reduce((sum, tx) => sum + Number(tx.totalAmount || 0), 0);
               Store.transactions = [];
@@ -5795,6 +5811,13 @@
             return;
           }
           const wb = XLSX.utils.book_new();
+          for (const category of ['main','other']) {
+            const rows = Finance.buckets(category).map(r => ({Siswa:r.studentName, Pembayaran:r.typeName, 'Diterima Guru':r.teacher, 'Langsung Bendahara':r.direct, 'Disetor Guru':r.transferred, 'Saldo Guru':r.balance, 'Total Bendahara':r.treasurer}));
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), category === 'main' ? 'Kas Utama' : 'Kas Lain-lain');
+          }
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Finance.ledger().transfers.map(t=>({ID:t.id,Kategori:t.category,Tanggal:t.date,Siswa:t.studentName,Pembayaran:t.typeName,Nominal:t.amount,Penerima:t.recipient,Bukti:t.note,Status:t.voided?'Batal':'Aktif',Alasan:t.voidReason||''}))), 'Bukti Setoran');
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Finance.otherRows().map(r=>({Siswa:r.studentName,Pembayaran:r.typeName,Tagihan:r.target,Dibayar:r.paid,Sisa:r.remaining}))), 'Tagihan Lain-lain');
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Finance.ledger().payments.map(p=>({ID:p.id,Tanggal:p.date,Siswa:p.studentName,Pembayaran:p.typeName,Nominal:p.amount,Penerima:p.recipient,Tujuan:p.destination,Status:p.voided?'Batal':'Aktif',Alasan:p.voidReason||''}))), 'Riwayat Lain-lain');
           const depSum = Store.getDepositSummary();
           const studentMatrix = Store.students.filter(s => s.active).map(st => Store.getStudentSummary(st));
           const pTypes = Store.paymentTypes.filter(p => p.active);
@@ -5806,16 +5829,16 @@
             "L/P": item.student.gender === 'Putri' ? 'P' : 'L',
             "Orang Tua / Wali": item.student.parentName || item.student.father || item.student.mother || '',
             "Total Target Biaya (Rp)": item.totalTarget,
-            "Uang di Guru Kelas (Disetorkan Rp)": item.cashTeacher,
-            "Uang di Bendahara Buku (Bu Aenal Rp)": item.directTreasurer,
+            "Penerimaan Guru (Rp, sebelum setoran)": item.cashTeacher,
+            "Pembayaran Langsung Bendahara (Rp)": item.directTreasurer,
             "Total Terbayar (Rp)": item.totalPaid,
             "Sisa Kekurangan (Rp)": item.remainingAmount,
             "Status Pelunasan": item.overallStatus,
-            "Rincian Setoran Guru Kelas": item.teacherItems.join('; ') || '-',
+            "Rincian Penerimaan Guru": item.teacherItems.join('; ') || '-',
             "Rincian di Bendahara Buku": item.treasurerItems.join('; ') || '-',
             "Rincian Tunggakan": item.unpaidItems.join('; ') || 'Lunas'
           }));
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsDeposit), "Setoran Bendahara Buku");
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsDeposit), "Penerimaan Siswa Aktif");
 
           // Sheet 2: Rekap Rincian Lengkap Siswa
           const rowsStudents = studentMatrix.map((item, idx) => {
@@ -5910,9 +5933,11 @@
 
       // Existing inline form handlers and the workspace share this store.
       window.Store = Store;
+      AppActions.validateBackup = validateBackupData;
       CloudSync.loadConfig();
       Store.init();
       Store.render();
+      if (typeof location !== 'undefined') DropboxBackup.callback();
       if (Store.currentTab === 'history') AppActions.updateHistoryTableDOM();
       if (Store.currentTab === 'billing') AppActions.updateBillingTableDOM();
       if (Store.currentTab === 'students') AppActions.updateStudentsTableDOM();
