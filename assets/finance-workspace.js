@@ -144,6 +144,74 @@
       const name = (api.typeList(rows).find(t => t.id === api.typeOther) || {}).name || '';
       return `Jenis: <b>${esc(name)}</b> — ${vis.length} siswa · Tagihan <b>${money(target)}</b> · Sudah dibayar <b>${money(paid)}</b> · Sisa <b>${money(rem)}</b>`;
     },
+    /* ---- Setor massal per jenis pembayaran (23 Nov 2026) ----
+       Satu jumlah untuk satu jenis dibagi otomatis ke tiap siswa yang
+       masih punya saldo jenis itu, urut nama A–Z, masing-masing sampai
+       lunas; siswa terakhir menerima sisa bila jumlah tidak bulat.
+       TIDAK ADA model baru: hasilnya tetap transfer per siswa seperti
+       form per siswa, jadi buckets(), validasi, CSV, dan XLSX tidak
+       berubah. Satu commit menulis semua transfer sekaligus — bila
+       satu alokasi tidak valid, semuanya batal. */
+    bulkPlan(category, typeId, n, date) {
+      const rows = api.buckets(category).filter(r => r.typeId === typeId && r.balance > 0)
+        .sort((a, b) => a.studentName.localeCompare(b.studentName, 'id') || a.studentId.localeCompare(b.studentId));
+      const totalBalance = rows.reduce((s, r) => s + r.balance, 0);
+      const typeName = rows[0]?.typeName || (api.typeList(api.buckets(category)).find(t => t.id === typeId) || {}).name || '';
+      if (!amount(n)) return { ok: false, error: 'Isi jumlah setoran yang valid.', allocations: [], total: 0, totalBalance, typeName };
+      if (n > totalBalance) return { ok: false, error: `Jumlah melebihi saldo jenis ini (${money(totalBalance)}).`, allocations: [], total: 0, totalBalance, typeName };
+      let rest = n; const allocations = [];
+      for (const r of rows) {
+        if (rest <= 0) break;
+        const take = Math.min(r.balance, rest);
+        allocations.push({ studentId: r.studentId, studentName: r.studentName, typeId: r.typeId, typeName: r.typeName, amount: take, full: take === r.balance, remaining: r.balance - take });
+        rest -= take;
+      }
+      // Aturan yang sama dengan setoran per siswa: uang tidak boleh
+      // disetor sebelum diterima. Cek per alokasi terhadap saldo
+      // per tanggal setoran (transaksi, pembayaran, DAN setoran lama
+      // difilter tanggalnya — persis seperti validasi di commit()).
+      if (date && TeacherWorkspace.validDate(date) && date <= today()) {
+        const prior = api.buckets(category, Store.transactions.filter(t => t.date <= date), { ...api.ledger(), payments: api.ledger().payments.filter(p => p.date <= date), transfers: api.ledger().transfers.filter(t => t.date <= date) });
+        for (const a of allocations) {
+          const p = prior.find(r => key(r.studentId, r.typeId) === key(a.studentId, a.typeId));
+          if (!p || a.amount > p.balance) return { ok: false, error: `Penerimaan ${a.studentName} sampai ${date} belum cukup untuk setor ${money(a.amount)} (saldo saat itu ${money(p ? p.balance : 0)}).`, allocations, total: n, totalBalance, typeName };
+        }
+      }
+      return { ok: true, error: '', allocations, total: n, totalBalance, typeName };
+    },
+    bulkPreviewHTML(category, typeId, n, date) {
+      if (!typeId) return 'Pilih jenis pembayaran dan isi jumlah total setoran.';
+      const rows = api.buckets(category).filter(r => r.typeId === typeId);
+      const typeName = rows[0]?.typeName || '';
+      const totalBalance = rows.reduce((s, r) => s + Math.max(0, r.balance), 0);
+      if (date && (!TeacherWorkspace.validDate(date) || date > today())) return `Jenis: <b>${esc(typeName)}</b> — saldo guru jenis ini <b>${money(totalBalance)}</b>.<br><span class="fw-warn">Tanggal setoran belum valid atau di masa depan.</span>`;
+      if (!amount(n)) return `Jenis: <b>${esc(typeName)}</b> — saldo guru jenis ini <b>${money(totalBalance)}</b>. Isi jumlah total setoran (Rp).`;
+      if (n > totalBalance) return `Jenis: <b>${esc(typeName)}</b> — saldo guru jenis ini <b>${money(totalBalance)}</b>.<br><span class="fw-warn">Jumlah melebihi saldo. Kurangi nominal setoran.</span>`;
+      const plan = api.bulkPlan(category, typeId, n, date);
+      const lines = plan.allocations.map(a => `${esc(a.studentName)} — <b>${money(a.amount)}</b>${a.full ? ' (lunas)' : ` (sebagian, sisa ${money(a.remaining)})`}`).join('<br>');
+      const warn = plan.ok ? '' : `<br><span class="fw-warn">${esc(plan.error)}</span>`;
+      return `Jenis: <b>${esc(typeName)}</b> — setor <b>${money(n)}</b> dari saldo <b>${money(totalBalance)}</b>, dibagi ke ${plan.allocations.length} siswa (urut nama A–Z):<br>${lines}${warn}`;
+    },
+    updateBulkPreview(form) {
+      const el = document.getElementById('bulk-preview'); if (!el) return;
+      const f = form.elements;
+      el.innerHTML = api.bulkPreviewHTML(api.category, f.type.value, Number(f.amount.value), f.date.value);
+    },
+    addBulkTransfer(form) {
+      const f = form.elements;
+      const typeId = f.type.value, n = Number(f.amount.value), date = f.date.value;
+      const recipient = f.recipient.value.trim(), note = f.note.value.trim();
+      if (!typeId) return Store.showToast('Pilih jenis pembayaran yang akan disetor.', 'error');
+      if (!recipient || !note) return Store.showToast('Isi nama bendahara penerima dan nomor bukti / catatan.', 'error');
+      if (!TeacherWorkspace.validDate(date) || date > today()) return Store.showToast('Periksa tanggal setoran (tidak boleh di masa depan).', 'error');
+      const plan = api.bulkPlan(api.category, typeId, n, date);
+      if (!plan.ok) return Store.showToast(plan.error, 'error');
+      const batchId = uid();
+      const stamp = ` — setor per jenis, ${plan.allocations.length} siswa`;
+      api.commit('SETOR KE BENDAHARA (PER JENIS)', l => {
+        for (const a of plan.allocations) l.transfers.push({ id: uid(), batchId, category: api.category, studentId: a.studentId, studentName: a.studentName, typeId: a.typeId, typeName: a.typeName, amount: a.amount, date, recipient, note: note + stamp, createdAt: new Date().toISOString() });
+      });
+    },
     commit(action, mutate) {
       const oldSettings=Store.settings, oldAudit=[...(Store.auditLogs||[])];
       Store.settings=JSON.parse(JSON.stringify(oldSettings));
@@ -163,6 +231,12 @@
     header(title,note) {return `<section class="tw-hero fw-hero"><div class="tw-eyebrow">BUKU KAS KELAS • ${esc(Store.settings.academicYear)}</div><h1>${title}</h1><p>${note}</p></section>`;},
     render() {
       const cat=api.category, l=api.ledger(),rows=api.buckets(cat), available=rows.filter(r=>r.balance>0);
+      /* Jenis untuk setor massal: hanya yang masih punya saldo, dengan
+         hitungan SISWA BERSALDO (bukan semua siswa yang pernah bayar
+         jenis itu) agar labelnya tidak menyesatkan. */
+      const bulkMap=new Map();
+      for (const r of rows) if (r.balance>0) { if(!bulkMap.has(r.typeId)) bulkMap.set(r.typeId,{typeId:r.typeId,typeName:r.typeName,balance:0,count:0}); const t=bulkMap.get(r.typeId); t.balance+=r.balance; t.count++; }
+      const bulkTypes=[...bulkMap.values()].sort((a,b)=>a.typeName.localeCompare(b.typeName,'id'));
       return `<div class="tw-workspace fw-workspace">${api.header('Setoran yang jelas. Saldo yang terpantau.','Penerimaan siswa dan penyerahan guru dicatat terpisah agar uang tidak dihitung dua kali.')}
       <div class="tw-chips no-print">${[['main','Pembayaran utama'],['other','Pembayaran lain-lain']].map(([id,label])=>`<button class="tw-chip ${cat===id?'is-active':''}" onclick="Finance.category='${id}';Store.render()">${label}</button>`).join('')}</div>
       <h2 class="fw-title">Rekap ${cat==='main'?'pembayaran utama':'lain-lain'} • seluruh periode</h2>${api.cards(cat)}
@@ -171,6 +245,11 @@
       <form class="fw-form" onsubmit="event.preventDefault();Finance.addTransfer(this)">
       <label>Asal uang<select name="bucket" required><option value="">Pilih siswa / pembayaran</option>${available.map(r=>`<option value="${esc(key(r.studentId,r.typeId))}">${esc(r.studentName)} · ${esc(r.typeName)} · saldo ${money(r.balance)}</option>`).join('')}</select></label>
       <label>Tanggal setoran<input name="date" type="date" value="${today()}" max="${today()}" required></label><label>Nominal (Rp)<input name="amount" type="number" min="1" step="1" required></label><label>Nama bendahara penerima<input name="recipient" maxlength="120" value="${esc(Store.settings.bookTreasurerName||'')}" required></label><label>Nomor bukti / catatan<input name="note" maxlength="300" required placeholder="Contoh: Bukti setor 001"></label><button class="tw-button tw-primary" ${available.length?'':'disabled'}>Simpan setoran</button></form></section>
+      <section class="tw-panel no-print"><h2 class="fw-title">Setor sekaligus per jenis pembayaran</h2><p>Isi satu jumlah untuk satu jenis — aplikasi membaginya otomatis ke tiap siswa yang masih punya saldo jenis itu, urut nama A–Z. Tidak perlu klik per siswa.</p>
+      <form class="fw-form" onsubmit="event.preventDefault();Finance.addBulkTransfer(this)">
+      <label>Jenis pembayaran<select name="type" required onchange="Finance.updateBulkPreview(this.form)"><option value="">Pilih jenis pembayaran</option>${bulkTypes.map(t=>`<option value="${esc(t.typeId)}">${esc(t.typeName)} · saldo ${money(t.balance)} · ${t.count} siswa</option>`).join('')}</select></label>
+      <label>Tanggal setoran<input name="date" type="date" value="${today()}" max="${today()}" required onchange="Finance.updateBulkPreview(this.form)"></label><label>Jumlah total (Rp)<input name="amount" type="number" min="1" step="1" required oninput="Finance.updateBulkPreview(this.form)"></label><label>Nama bendahara penerima<input name="recipient" maxlength="120" value="${esc(Store.settings.bookTreasurerName||'')}" required></label><label>Nomor bukti / catatan<input name="note" maxlength="300" required placeholder="Contoh: Bukti setor 002"></label><button class="tw-button tw-primary" ${bulkTypes.length?'':'disabled'}>Simpan setoran per jenis</button></form>
+      <div class="fw-notice" id="bulk-preview">Pilih jenis dan isi jumlah untuk melihat pembagiannya.</div></section>
       <section class="tw-panel"><div class="tw-section-title"><h2>Rincian per siswa dan pembayaran</h2><div class="no-print"><button class="tw-button" onclick="Finance.exportRekap()">Unduh CSV</button> <button class="tw-button" onclick="window.print()">Cetak rekap</button></div></div>
       <h3 class="fw-title">Total per jenis pembayaran</h3><p class="tw-context">Dihitung dari data yang sama dengan tabel rincian di bawah — tekan “Lihat” untuk menyaring rincian ke jenis itu saja.</p>${api.typeTableHTML(rows)}
       <div class="fw-filters no-print"><label>Jenis pembayaran${api.typeSelectHTML(rows, 'typeMain')}</label><label>Urutkan${api.sortSelectHTML('sortMain', [['default', 'Urutan data'], ['type', 'Jenis pembayaran (A–Z)'], ['student', 'Nama siswa (A–Z)'], ['total', 'Total bendahara terbesar'], ['balance', 'Saldo guru terbesar']])}</label></div>
